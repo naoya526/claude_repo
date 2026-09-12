@@ -50,6 +50,7 @@ export interface Unlock {
 export const UNLOCKS: readonly Unlock[] = [
   { outfit: 'hardhat', level: 4 },
   { outfit: 'wizard', level: 7 },
+  { outfit: 'basket', level: 9 },
   { outfit: 'party', level: 10 },
   { outfit: 'headphones', level: 12 },
   { outfit: 'beanie', level: 14 },

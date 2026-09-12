@@ -1,5 +1,5 @@
-export type FoodKind = 'token' | 'coffee' | 'bug' | 'commit' | 'berry';
-export const FOOD_KINDS: readonly FoodKind[] = ['token', 'coffee', 'bug', 'commit', 'berry'];
+export type FoodKind = 'token' | 'coffee' | 'bug' | 'commit';
+export const FOOD_KINDS: readonly FoodKind[] = ['token', 'coffee', 'bug', 'commit'];
 
 export type Tool = 'cursor' | FoodKind;
 
@@ -27,7 +27,5 @@ export interface SaveData {
   outfit?: string;
   fed: Record<FoodKind, number>;
   pokes: number;
-  /** berries currently in the basket */
-  basket?: number;
   savedAt: number;
 }

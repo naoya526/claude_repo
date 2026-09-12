@@ -4,7 +4,7 @@ import type { FoodKind } from './types';
  * Pixel maps. One string per row, one char per pixel.
  *   .  transparent      #  body (orange)     @  eye (drawn by the renderer)
  *   +  dark accent      *  gold              c  cream        w  white
- *   g  green            G  dark green        n  bark
+ *   g  green            G  dark green
  *   k  coffee brown     r  grey              d  dark grey    s  steel
  *   y  hard-hat yellow  o  hat emblem        p  wizard purple
  *   h  basket straw     H  basket shadow
@@ -20,7 +20,6 @@ export const COLORS = {
   gold: '#F2C14E',
   green: '#5FB57A',
   darkGreen: '#3E8257',
-  bark: '#6B4A33',
   coffee: '#5C3B2E',
   white: '#FFFFFF',
   grey: '#9A9A9A',
@@ -45,7 +44,6 @@ export const PALETTE: Readonly<Record<string, string>> = {
   w: COLORS.white,
   g: COLORS.green,
   G: COLORS.darkGreen,
-  n: COLORS.bark,
   k: COLORS.coffee,
   r: COLORS.grey,
   d: COLORS.darkGrey,
@@ -63,7 +61,7 @@ export const PALETTE: Readonly<Record<string, string>> = {
 // Every pose shares a 16 × 9 canvas so switching poses never shifts the body.
 // Body: cols 2..12, rows 0..6. Arms: col 1 / col 13. Legs: 4 × 1 px.
 
-export type Pose = 'idle' | 'armup' | 'crawl' | 'pick';
+export type Pose = 'idle' | 'armup' | 'crawl';
 
 const IDLE: PixelMap = [
   '...#########....',
@@ -103,44 +101,19 @@ const CRAWL: PixelMap = [
   '....#.#.#.#.....',
 ];
 
-/** stretched up on its toes, arm reaching out for a berry (body sits one row lower) */
-const PICK: PixelMap = [
-  '..............#.',
-  '...#########.#..',
-  '..###########...',
-  '..##@#####@##...',
-  '.#############..',
-  '.#############..',
-  '..###########...',
-  '..###########...',
-  '....#.#.#.#.....',
-];
-
-export const POSES: Readonly<Record<Pose, PixelMap>> = { idle: IDLE, armup: ARMUP, crawl: CRAWL, pick: PICK };
+export const POSES: Readonly<Record<Pose, PixelMap>> = { idle: IDLE, armup: ARMUP, crawl: CRAWL };
 
 /** where the body sits per pose, relative to the idle pose */
 export const POSE_HEAD_OFFSET: Readonly<Record<Pose, { x: number; y: number }>> = {
   idle: { x: 0, y: 0 },
   armup: { x: 0, y: 0 },
   crawl: { x: 0, y: 1 },
-  pick: { x: 0, y: 1 },
 };
-
-// ── the berry basket ─────────────────────────────────────────────
-
-export const BASKET: PixelMap = ['.HH.', 'H..H', 'hhhh', 'hHhH', 'hhhh', '.hh.'];
-/** top-left of the basket in idle-map coordinates */
-export const BASKET_AT = { x: 1, y: 1 } as const;
-/** where a tossed berry lands, and where it leaves the outstretched arm */
-export const BASKET_SLOT = { x: 2.5, y: 4 } as const;
-export const BERRY_TIP = { x: 15, y: -2 } as const;
-/** how many berries fit before the pet tips the basket into its mouth */
-export const BASKET_CAPACITY = 5;
 
 // ── outfits (overlays drawn after the body, in idle-map coordinates) ─────────
 
-export type Outfit = 'none' | 'hardhat' | 'wizard' | 'party' | 'headphones' | 'beanie' | 'shades' | 'halo' | 'antenna' | 'cape';
-export const OUTFIT_NAMES: readonly Outfit[] = ['none', 'hardhat', 'wizard', 'party', 'headphones', 'beanie', 'shades', 'halo', 'antenna', 'cape'];
+export type Outfit = 'none' | 'hardhat' | 'wizard' | 'basket' | 'party' | 'headphones' | 'beanie' | 'shades' | 'halo' | 'antenna' | 'cape';
+export const OUTFIT_NAMES: readonly Outfit[] = ['none', 'hardhat', 'wizard', 'basket', 'party', 'headphones', 'beanie', 'shades', 'halo', 'antenna', 'cape'];
 
 export interface OutfitLayer {
   map: PixelMap;
@@ -173,6 +146,7 @@ const WIZARD_HAT: PixelMap = [
   'ppppppppppp',
 ];
 const CROWN: PixelMap = ['*..*..*', '*.***.*', '*******'];
+const BERRY_BASKET: PixelMap = ['.HHH.', 'H...H', 'bBBBb', 'hhhhh', 'hHhHh', '.hhh.'];
 const HEADPHONES: PixelMap = ['...sssssss...', '..s.......s..', '.s.........s.', 'ss.........ss', 'ss.........ss'];
 const BEANIE: PixelMap = ['.....c.....', '..GGGGGGG..', '.GGGGGGGGG.', 'ggggggggggg', 'ggggggggggg'];
 const SHADES: PixelMap = ['sssssssssss', 's+++sss+++s', '.sss...sss.'];
@@ -190,10 +164,11 @@ export const OUTFITS: Readonly<Record<Outfit, OutfitDef>> = {
     layers: [
       { map: HARD_HAT, x: 2, y: -2 },
       { map: WRENCH, x: 14, y: 0, poses: ['idle', 'crawl'] },
-      { map: WRENCH, x: 14, y: -4, poses: ['armup', 'pick'] },
+      { map: WRENCH, x: 14, y: -4, poses: ['armup'] },
     ],
   },
   wizard: { label: 'wizard hat', above: 7, layers: [{ map: WIZARD_HAT, x: 2, y: -7 }] },
+  basket: { label: 'berry basket', above: 0, layers: [{ map: BERRY_BASKET, x: 0, y: 1 }] },
   party: { label: 'crown & confetti', above: 3, layers: [{ map: CROWN, x: 5, y: -3 }] },
   headphones: { label: 'headphones', above: 2, layers: [{ map: HEADPHONES, x: 1, y: -2 }] },
   beanie: { label: 'knit beanie', above: 4, layers: [{ map: BEANIE, x: 2, y: -4 }] },
@@ -217,32 +192,14 @@ export const OUTFITS: Readonly<Record<Outfit, OutfitDef>> = {
   },
 };
 
-// ── food & scenery ───────────────────────────────────────────────
+// ── food ───────────────────────────────────────────────
 
 export const FOOD_SPRITES: Readonly<Record<FoodKind, PixelMap>> = {
   token: ['.*****.', '*******', '**ccc**', '**c****', '**ccc**', '*******', '.*****.'],
   coffee: ['.c.c...', '..c.c..', 'ccccc..', 'ckkkccc', 'ckkkc.c', 'ckkkccc', '.ccc...'],
   bug: ['g.....g', '.g...g.', '..ggg..', '.ggggg.', 'g.g+g.g', '.ggggg.', 'g.g.g.g'],
   commit: ['...c...', '...c...', '..ccc..', '.cc*cc.', '..ccc..', '...c...', '...c...'],
-  berry: ['..g.g..', '.ggGg..', '..bBb..', '.bBbBb.', '.bbBbb.', '..bbb..', '...b...'],
 };
-
-/** the raspberry bush the pet forages from */
-export const BUSH: PixelMap = [
-  '.....GG.GG.....',
-  '...GGGgggGGG...',
-  '..GGgggggggGG..',
-  '.GGgggggggBbGG.',
-  'GGgBbgggggbbgGG',
-  'GGgbbggggggggGG',
-  'GGgggggggggggGG',
-  '.GGgggBbgggBbG.',
-  '..GGggbbgggbb..',
-  '...GGGgggGGG...',
-  '......nnn......',
-  '......nnn......',
-  '......nnn......',
-];
 
 // ── helpers ──────────────────────────────────────────────────────
 

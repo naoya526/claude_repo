@@ -110,12 +110,11 @@ html, body {
 .stats .bar { color: var(--accent); }
 .stats .bar.low { color: var(--red); }
 .stats .bar.xp { color: var(--gold); }
-.stats .bar.berry { color: #c9455a; }
 .stats .dim { color: var(--border); }
 .stats .name { color: var(--cream); font-weight: 600; }
 
 /* ── tray ─────────────────────────────────────────────── */
-.tray { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+.tray { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .tool {
   appearance: none;
   min-width: 0;
@@ -209,7 +208,7 @@ html, body {
   .hint { font-size: 10px; }
 }
 @media (max-width: 640px) {
-  .tray { grid-template-columns: repeat(6, 1fr); gap: 3px; }
+  .tray { grid-template-columns: repeat(5, 1fr); gap: 4px; }
   .tool { padding: 4px 1px 3px; gap: 1px; font-size: 10px; }
   .tool canvas { width: 20px; height: 20px; }
   .tool .key { display: none; }

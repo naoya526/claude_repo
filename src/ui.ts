@@ -1,7 +1,7 @@
 import type { Pet } from './pet';
 import { FOOD_KINDS, type FoodKind, type Tool } from './types';
 import { FOODS } from './logic';
-import { BASKET_CAPACITY, FOOD_SPRITES } from './sprites';
+import { FOOD_SPRITES } from './sprites';
 import { Renderer } from './renderer';
 import { STAGES, levelForXp, nextStage, nextUnlock, xpForLevel } from './evolution';
 
@@ -73,7 +73,7 @@ export class UI {
       if (tool === 'cursor') Renderer.renderIcon(icon, ['.......', '.#.....', '.##....', '.###...', '.####..', '.#####.', '..#.#..']);
       else Renderer.renderIcon(icon, FOOD_SPRITES[tool]);
       const label = document.createElement('span');
-      label.textContent = tool === 'berry' ? 'berry' : tool;
+      label.textContent = tool;
       const key = document.createElement('span');
       key.className = 'key';
       key.textContent = i === 0 ? '[0]' : `[${i}]`;
@@ -133,9 +133,6 @@ export class UI {
     ];
     if (nextSt) {
       lines.push(`<span class="k">evolve  </span> <span class="bar">${bar(((s.xp - pet.def.xp) / Math.max(1, nextSt.xp - pet.def.xp)) * 100)}</span> <span class="k">${nextSt.xp} xp → ${esc(nextSt.name)}</span>`);
-    }
-    if (pet.showBasket) {
-      lines.push(`<span class="k">basket  </span> <span class="bar berry">${'▮'.repeat(pet.basket)}<span class="dim">${'▯'.repeat(BASKET_CAPACITY - pet.basket)}</span></span> <span class="k">${pet.basket}/${BASKET_CAPACITY}</span>`);
     }
     lines.push(unlock ? `<span class="k">next    </span> ✻ ${esc(unlock.outfit)} <span class="k">@ lv ${unlock.level}</span>` : `<span class="k">next    </span> <span class="k">wardrobe complete</span>`);
 

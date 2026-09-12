@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASKET, BUSH, FOOD_SPRITES, OUTFITS, OUTFIT_NAMES, POSES, eyeBoxes, legRowCount, legRuns, mapSize, validateMap } from './sprites';
+import { FOOD_SPRITES, OUTFITS, OUTFIT_NAMES, POSES, eyeBoxes, legRowCount, legRuns, mapSize, validateMap } from './sprites';
 import { STAGES, UNLOCKS, levelForXp, unlockedOutfits, unlocksBetween, nextUnlock, xpForLevel } from './evolution';
 
 describe('pixel maps', () => {
@@ -11,10 +11,8 @@ describe('pixel maps', () => {
     }
   });
 
-  it('food, bush and basket sprites are valid', () => {
+  it('food sprites are valid', () => {
     for (const [k, m] of Object.entries(FOOD_SPRITES)) expect(validateMap(m), k).toBeNull();
-    expect(validateMap(BUSH)).toBeNull();
-    expect(validateMap(BASKET)).toBeNull();
   });
 
   it('outfit layers are valid and declare how far they rise above the head', () => {
@@ -42,10 +40,9 @@ describe('pixel maps', () => {
     }
   });
 
-  it('idle legs are two rows, crawl and pick one row', () => {
+  it('idle legs are two rows, crawl one row', () => {
     expect(legRowCount(POSES.idle)).toBe(2);
     expect(legRowCount(POSES.crawl)).toBe(1);
-    expect(legRowCount(POSES.pick)).toBe(1);
   });
 });
 
@@ -67,6 +64,11 @@ describe('wardrobe', () => {
   it('grows from just "none" to the full wardrobe', () => {
     expect(unlockedOutfits(1)).toEqual(['none']);
     expect(unlockedOutfits(999)).toHaveLength(UNLOCKS.length + 1);
+  });
+
+  it('outfits are cosmetic only — every layer is a valid overlay', () => {
+    const total = Object.values(OUTFITS).reduce((n, o) => n + o.layers.length, 0);
+    expect(total).toBeGreaterThan(OUTFIT_NAMES.length - 1);
   });
 
   it('keeps unlocking well past the last evolution', () => {

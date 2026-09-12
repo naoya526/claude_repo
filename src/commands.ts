@@ -15,7 +15,7 @@ export interface CommandContext {
 }
 
 const HELP = [
-  '/feed <kind>   drop a snack (token|coffee|bug|commit|berry)',
+  '/feed <kind>   drop a snack (token|coffee|bug|commit)',
   '/pet           poke it',
   '/status        print stats',
   '/name <name>   rename',
@@ -23,7 +23,7 @@ const HELP = [
   '/sleep /wake   toggle nap',
   '/stages        evolution chart',
   '/save /reset /clear',
-  'keys: 1-5 food · 0/esc cursor · space poke · / prompt',
+  'keys: 1-4 food · 0/esc cursor · space poke · / prompt',
 ];
 
 const REPLIES = ['I am a pet, not a chatbot ✻', 'try /help', '*tilts head*', 'beep boop', 'did you mean /feed?', '…tokens?'];

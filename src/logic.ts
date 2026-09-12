@@ -12,8 +12,6 @@ export interface FoodDef {
   line: string;
   /** what the log says */
   effect: string;
-  /** picked into the basket with the reach animation instead of eaten on the spot */
-  picked?: boolean;
 }
 
 export const FOODS: Readonly<Record<FoodKind, FoodDef>> = {
@@ -21,7 +19,6 @@ export const FOODS: Readonly<Record<FoodKind, FoodDef>> = {
   coffee: { label: 'coffee', hunger: 4, energy: 35, happiness: 6, xp: 8, line: 'caffeinated!', effect: 'speed boost for 12s' },
   bug: { label: 'bug', hunger: 8, energy: -4, happiness: 22, xp: 15, line: 'bug fixed ✓', effect: 'very satisfying' },
   commit: { label: 'commit', hunger: 10, energy: 5, happiness: 12, xp: 30, line: 'committed ✓', effect: 'big xp' },
-  berry: { label: 'raspberry', hunger: 14, energy: 2, happiness: 10, xp: 12, line: 'picked one!', effect: 'into the basket', picked: true },
 };
 
 export const DEFAULT_STATS: Stats = { hunger: 70, energy: 80, happiness: 70, xp: 0 };

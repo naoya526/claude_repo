@@ -2,7 +2,7 @@ import type { EyeStyle, FoodKind, Mood, SaveData, Stats, Vec } from './types';
 import { FOOD_KINDS } from './types';
 import { STAGES, levelForXp, stageForXp, unlockedOutfits, unlocksBetween, type StageDef } from './evolution';
 import { DEFAULT_STATS, FOODS, applyFood, clamp, decay, moodFromStats, offlineDecay } from './logic';
-import { BASKET_CAPACITY, OUTFITS, OUTFIT_NAMES, POSES, mapSize, type Outfit, type Pose } from './sprites';
+import { OUTFITS, OUTFIT_NAMES, POSES, mapSize, type Outfit, type Pose } from './sprites';
 
 export interface Food {
   id: number;
@@ -25,8 +25,6 @@ export type PetEvent =
   | { type: 'log'; text: string; cls: string }
   | { type: 'bubble'; text: string; ms?: number }
   | { type: 'ate'; food: Food; overfed: boolean }
-  | { type: 'picked'; food: Food; basket: number }
-  | { type: 'basket-full'; bonus: number }
   | { type: 'evolve-start'; to: number }
   | { type: 'evolved'; from: number; to: number }
   | { type: 'levelup'; level: number }
@@ -38,11 +36,6 @@ export type PetEvent =
 const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)] as T;
 const dist = (a: Vec, b: Vec): number => Math.hypot(a.x - b.x, a.y - b.y);
 
-/** reach for the berry, then toss it into the basket */
-export const PICK_REACH = 0.45;
-export const PICK_TOSS = 0.5;
-const PICK_TOTAL = PICK_REACH + PICK_TOSS + 0.2;
-
 const LINES = {
   poke: ['hey!', '✻ boop', 'that tickles', 'hi :)', "I'm working here…", 'again?', '!', 'poke received'],
   wake: ['…huh? oh, hi', '*stretches*', 'was I sleeping?', 'resuming session…'],
@@ -53,7 +46,6 @@ const LINES = {
   sad: ['…', 'nobody pokes me', '*sigh*', 'is anyone there?'],
   overfed: ['too full…', 'rate limited', 'context overflow'],
   evolve: ['✻ Compacting context…', 'something is happening…'],
-  forage: ['berries!', 'ooh, raspberries', 'picking time'],
 } as const;
 
 export class Pet {
@@ -67,8 +59,6 @@ export class Pet {
   outfit: Outfit = 'none';
   fed: Record<FoodKind, number>;
   pokes: number;
-  /** berries currently in the basket */
-  basket: number;
 
   mood: Mood = 'idle';
   private moodUntil = 0;
@@ -79,8 +69,6 @@ export class Pet {
   moving = false;
   /** true while walking after the cursor — switches to the crawl pose */
   chasing = false;
-  /** true while there are berries to collect — the basket comes out */
-  foraging = false;
   squish = 0;
   jump = 0;
   private jumpV = 0;
@@ -89,9 +77,6 @@ export class Pet {
 
   eatTimer = 0;
   private eating: Food | null = null;
-  /** counts down through reach → toss → settle */
-  pickTimer = 0;
-  private picking: Food | null = null;
   evolveTimer = 0;
   private evolveTo = -1;
 
@@ -111,10 +96,9 @@ export class Pet {
     this.level = levelForXp(this.stats.xp);
     const savedOutfit = save?.outfit as Outfit | undefined;
     this.outfit = savedOutfit && unlockedOutfits(this.level).includes(savedOutfit) ? savedOutfit : 'none';
-    this.fed = { token: 0, coffee: 0, bug: 0, commit: 0, berry: 0 };
+    this.fed = { token: 0, coffee: 0, bug: 0, commit: 0 };
     for (const k of FOOD_KINDS) this.fed[k] = save?.fed?.[k] ?? 0;
     this.pokes = save?.pokes ?? 0;
-    this.basket = clamp(save?.basket ?? 0, 0, BASKET_CAPACITY);
     this.lastInteraction = now;
     this.chatterAt = now + 6000;
     this.wanderAt = now + 5000;
@@ -159,28 +143,13 @@ export class Pet {
   }
 
   get busy(): boolean {
-    return this.eatTimer > 0 || this.pickTimer > 0 || this.evolveTimer > 0;
-  }
-
-  /** the basket is worn while foraging, while picking, and while it still holds berries */
-  get showBasket(): boolean {
-    return this.basket > 0 || this.pickTimer > 0 || this.foraging;
+    return this.eatTimer > 0 || this.evolveTimer > 0;
   }
 
   pose(): Pose {
-    if (this.pickTimer > 0) return 'pick';
     if (this.evolveTimer > 0 || this.mood === 'excited' || this.squish > 0.05 || this.jump < 0) return 'armup';
     if (this.chasing && this.moving) return 'crawl';
     return 'idle';
-  }
-
-  /** null when not picking, else the phase and its 0..1 progress */
-  pickProgress(): { phase: 'reach' | 'toss' | 'settle'; t: number } | null {
-    if (this.pickTimer <= 0) return null;
-    const elapsed = PICK_TOTAL - this.pickTimer;
-    if (elapsed < PICK_REACH) return { phase: 'reach', t: elapsed / PICK_REACH };
-    if (elapsed < PICK_REACH + PICK_TOSS) return { phase: 'toss', t: (elapsed - PICK_REACH) / PICK_TOSS };
-    return { phase: 'settle', t: (elapsed - PICK_REACH - PICK_TOSS) / 0.2 };
   }
 
   unlocked(): Outfit[] {
@@ -300,7 +269,6 @@ export class Pet {
     const now = w.now;
     this.t += dt;
     this.stats = decay(this.stats, dt, this.sleeping);
-    this.foraging = w.foods.some((f) => f.kind === 'berry');
 
     if (now >= this.nextBlink) {
       this.blinkUntil = now + 130;
@@ -320,14 +288,6 @@ export class Pet {
       this.moving = false;
       this.evolveTimer -= dt;
       if (this.evolveTimer <= 0) this.finishEvolve(now);
-      return;
-    }
-    if (this.pickTimer > 0) {
-      this.moving = false;
-      const before = this.pickProgress()?.phase;
-      this.pickTimer -= dt;
-      if (before === 'toss' && this.pickProgress()?.phase === 'settle') this.landBerry(now);
-      if (this.pickTimer <= 0) this.pickTimer = 0;
       return;
     }
     if (this.eatTimer > 0) {
@@ -456,7 +416,7 @@ export class Pet {
     else if (Math.random() < 0.6) this.say(pick(LINES.idle));
   }
 
-  // ── eating & picking ───────────────────────────────────────────
+  // ── eating ─────────────────────────────────────────────────────
 
   private startEat(food: Food, w: World, now: number): void {
     w.foods.splice(w.foods.indexOf(food), 1);
@@ -465,39 +425,10 @@ export class Pet {
     this.lastInteraction = now;
     this.facing = food.x >= this.x ? 1 : -1;
     this.moodUntil = 0;
-
-    if (FOODS[food.kind].picked) {
-      this.picking = food;
-      this.pickTimer = PICK_TOTAL;
-      this.mood = 'eating';
-      this.say(this.basket === 0 ? pick(LINES.forage) : FOODS[food.kind].line, 1500);
-      return;
-    }
     this.eating = food;
     this.eatTimer = 1.5;
     this.mood = 'eating';
     this.say(FOODS[food.kind].line, 1600);
-  }
-
-  /** the tossed berry has reached the basket */
-  private landBerry(now: number): void {
-    const food = this.picking;
-    this.picking = null;
-    if (!food) return;
-    this.squish = 0.5;
-    this.basket = Math.min(BASKET_CAPACITY, this.basket + 1);
-    this.applyMeal(food, now);
-    this.emit({ type: 'picked', food, basket: this.basket });
-    if (this.basket >= BASKET_CAPACITY) {
-      const bonus = 20;
-      this.basket = 0;
-      this.stats = { ...this.stats, xp: this.stats.xp + bonus, happiness: clamp(this.stats.happiness + 8) };
-      this.emit({ type: 'basket-full', bonus });
-      this.setMood('excited', 2600, now);
-      this.say('basket full ✓', 2200);
-      this.jumpV = -260;
-    }
-    this.checkProgress();
   }
 
   private finishEat(now: number): void {
@@ -509,7 +440,7 @@ export class Pet {
     this.checkProgress();
   }
 
-  /** shared stat/xp bookkeeping for a swallowed or picked item */
+  /** stat/xp bookkeeping for a swallowed item */
   private applyMeal(food: Food, now: number): void {
     const { stats, overfed } = applyFood(this.stats, food.kind);
     this.stats = stats;
@@ -519,7 +450,7 @@ export class Pet {
     if (overfed) {
       this.setMood('sad', 2500, now);
       this.say(pick(LINES.overfed), 1800);
-    } else if (this.mood !== 'excited') {
+    } else {
       this.setMood('happy', 2500, now);
     }
   }
@@ -569,7 +500,6 @@ export class Pet {
       outfit: this.outfit,
       fed: { ...this.fed },
       pokes: this.pokes,
-      basket: this.basket,
       savedAt: Date.now(),
     };
   }
@@ -582,16 +512,12 @@ export class Pet {
     this.level = 1;
     this.outfit = 'none';
     this.chasing = false;
-    this.foraging = false;
-    this.basket = 0;
-    this.fed = { token: 0, coffee: 0, bug: 0, commit: 0, berry: 0 };
+    this.fed = { token: 0, coffee: 0, bug: 0, commit: 0 };
     this.pokes = 0;
     this.mood = 'idle';
     this.moodUntil = 0;
     this.eatTimer = 0;
     this.eating = null;
-    this.pickTimer = 0;
-    this.picking = null;
     this.evolveTimer = 0;
     this.evolveTo = -1;
     this.target = null;
