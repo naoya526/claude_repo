@@ -1,0 +1,19 @@
+{
+  "name": "claude-pet",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "An interactive pixel pet of the Claude Code mascot, in a terminal-flavoured web app.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
+  }
+}

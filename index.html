@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="claude-pet — an interactive pixel pet of the Claude Code mascot. Poke it, lure it with your cursor, feed it tokens and watch it evolve." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>claude-pet</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="titlebar">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <span class="title">claude-pet — ~/pets/claude</span>
+        <span class="version">v0.1.0</span>
+      </header>
+
+      <main class="layout">
+        <section class="stage" id="stage-wrap">
+          <canvas id="stage" aria-label="claude pet playground"></canvas>
+          <div class="hint" id="hint">click: poke · move mouse: lure · pick a food, then click: drop</div>
+        </section>
+
+        <aside class="panel">
+          <div class="block">
+            <div class="block-title">▎status</div>
+            <pre class="stats" id="stats"></pre>
+          </div>
+
+          <div class="block">
+            <div class="block-title">▎feed <span class="muted">(1-4, 0/esc = cursor)</span></div>
+            <div class="tray" id="tray"></div>
+          </div>
+
+          <div class="block grow">
+            <div class="block-title">▎log</div>
+            <div class="log" id="log" aria-live="polite"></div>
+          </div>
+
+          <form class="prompt" id="prompt" autocomplete="off">
+            <span class="caret">&gt;</span>
+            <input id="cmd" type="text" placeholder="/help for commands" spellcheck="false" aria-label="command input" />
+          </form>
+        </aside>
+      </main>
+
+      <footer class="statusline">
+        <span id="status-left">✻ claude-pet</span>
+        <span id="status-right"></span>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
