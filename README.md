@@ -2,8 +2,8 @@
 
 An interactive pixel pet of the Claude Code mascot, living inside a terminal-flavoured web page.
 Poke it, lure it around with your cursor, feed it tokens (and coffee, bugs, commits) and watch it evolve
-from **Haiku → Sonnet → Opus → Mythos**. Levels keep climbing long after the last evolution, unlocking ten
-purely cosmetic outfits from a hard hat to a crimson cape.
+from **Haiku → Sonnet → Opus → Fable**. Each evolution hands over an outfit, and once it reaches Fable the
+levels keep climbing and unlock seven more. All ten are purely cosmetic.
 
 Written in TypeScript with Vite and a plain Canvas 2D renderer. No runtime dependencies.
 
@@ -30,9 +30,9 @@ npm test           # vitest
 
 Commands: `/help` `/feed <kind>` `/pet` `/status` `/name <name>` `/wear <outfit>` `/outfits` `/sleep` `/wake` `/stages` `/save` `/reset confirm` `/clear`
 
-Outfits unlock by level and auto-equip: `hardhat` lv 4, `wizard` lv 7, `basket` lv 9, `party` lv 10,
-`headphones` lv 12, `beanie` lv 14, `shades` lv 16, `halo` lv 19, `antenna` lv 22, `cape` lv 26.
-`/outfits` shows the wardrobe and `/wear none` takes it all off.
+Outfits auto-equip as they unlock. Evolving grants `hardhat` (Sonnet), `wizard` (Opus) and `party` (Fable);
+after that, levelling up as a Fable grants `basket` lv 12, `headphones` lv 14, `beanie` lv 16, `shades` lv 18,
+`halo` lv 21, `antenna` lv 24 and `cape` lv 28. `/outfits` shows the wardrobe and `/wear none` takes it all off.
 
 Progress is saved to `localStorage` every few seconds and on tab close.
 

@@ -2,8 +2,8 @@ import type { Pet } from './pet';
 import type { UI } from './ui';
 import { FOOD_KINDS, type FoodKind, type Vec } from './types';
 import { FOODS } from './logic';
-import { STAGES, UNLOCKS, levelForXp, nextStage, xpForLevel } from './evolution';
-import { OUTFITS } from './sprites';
+import { LEVEL_UNLOCKS, STAGES, levelForXp, nextStage, stageUnlocks, unlockRequirement, wardrobeSize, xpForLevel } from './evolution';
+import { OUTFITS, type Outfit } from './sprites';
 
 export interface CommandContext {
   pet: Pet;
@@ -88,13 +88,20 @@ export function runCommand(raw: string, ctx: CommandContext): void {
 
     case 'outfits':
     case 'wardrobe': {
-      const lvl = levelForXp(pet.stats.xp);
-      ui.log(`wearing ${pet.outfit} · ${pet.unlocked().length}/${UNLOCKS.length + 1} unlocked`, 'act');
-      ui.log(`${pet.outfit === 'none' ? '▶' : ' '} none    ${'lv 1'.padStart(5)}  ${OUTFITS.none.label}`, 'sub');
-      for (const u of UNLOCKS) {
-        const has = lvl >= u.level;
-        const mark = pet.outfit === u.outfit ? '▶' : has ? ' ' : '🔒';
-        ui.log(`${mark} ${u.outfit.padEnd(11)}${`lv ${u.level}`.padStart(5)}  ${has ? OUTFITS[u.outfit].label : `locked — ${xpForLevel(u.level)} xp`}`, 'sub');
+      const have = pet.unlocked();
+      const row = (outfit: Outfit, requirement: string, locked: string | null) => {
+        const mark = pet.outfit === outfit ? '▶' : locked ? '🔒' : ' ';
+        ui.log(`${mark} ${outfit.padEnd(11)}${requirement.padStart(7)}  ${locked ?? OUTFITS[outfit].label}`, 'sub');
+      };
+      ui.log(`wearing ${pet.outfit} · ${have.length}/${wardrobeSize()} unlocked`, 'act');
+      ui.log('earned by evolving:', 'sub');
+      row('none', 'start', null);
+      for (const u of stageUnlocks()) {
+        row(u.outfit, STAGES[u.stage]?.name ?? '?', have.includes(u.outfit) ? null : `locked — evolve to ${STAGES[u.stage]?.name}`);
+      }
+      ui.log(`earned by levelling up as a ${STAGES[STAGES.length - 1]?.name}:`, 'sub');
+      for (const u of LEVEL_UNLOCKS) {
+        row(u.outfit, `lv ${u.level}`, have.includes(u.outfit) ? null : `locked — ${xpForLevel(u.level)} xp`);
       }
       break;
     }
@@ -111,8 +118,7 @@ export function runCommand(raw: string, ctx: CommandContext): void {
         ui.log(`now wearing ${OUTFITS[pet.outfit].label}`, 'ok');
         pet.events.push({ type: 'bubble', text: name === 'none' ? 'back to basics' : 'how do I look?', ms: 2000 });
       } else if (name in OUTFITS) {
-        const need = UNLOCKS.find((u) => u.outfit === name);
-        ui.log(`${name} is locked — reach lv ${need?.level ?? '?'} (${xpForLevel(need?.level ?? 1)} xp)`, 'err');
+        ui.log(`${name} is locked — unlocks at ${unlockRequirement(name as Outfit)}`, 'err');
       } else {
         ui.log(`unknown outfit "${arg}" — ${list.join(', ')}`, 'err');
       }
@@ -131,7 +137,7 @@ export function runCommand(raw: string, ctx: CommandContext): void {
 
     case 'stages':
       STAGES.forEach((st, i) => ui.log(`${i === pet.stage ? '▶' : ' '} ${i + 1}. ${st.name.padEnd(7)} ${String(st.xp).padStart(4)} xp  ${st.tagline}`, 'sub'));
-      ui.log(`  after Mythos the levels keep going — see /outfits`, 'sub');
+      ui.log(`  each evolution brings an outfit; after ${STAGES[STAGES.length - 1]?.name} the levels keep going — see /outfits`, 'sub');
       break;
 
     case 'save': {

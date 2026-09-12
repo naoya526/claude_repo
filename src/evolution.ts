@@ -10,14 +10,18 @@ export interface StageDef {
   pixel: number;
   /** walking speed, px/s */
   speed: number;
+  /** outfit granted by reaching this stage */
+  unlock: Outfit | null;
 }
 
 export const STAGES: readonly StageDef[] = [
-  { name: 'Haiku', tagline: 'small, quick, curious', xp: 0, pixel: 6, speed: 75 },
-  { name: 'Sonnet', tagline: 'grown into a builder', xp: 60, pixel: 6, speed: 88 },
-  { name: 'Opus', tagline: 'deep thinker, long context', xp: 180, pixel: 7, speed: 98 },
-  { name: 'Mythos', tagline: 'final form — now it just levels', xp: 420, pixel: 8, speed: 112 },
+  { name: 'Haiku', tagline: 'small, quick, curious', xp: 0, pixel: 6, speed: 75, unlock: null },
+  { name: 'Sonnet', tagline: 'grown into a builder', xp: 60, pixel: 6, speed: 88, unlock: 'hardhat' },
+  { name: 'Opus', tagline: 'deep thinker, long context', xp: 180, pixel: 7, speed: 98, unlock: 'wizard' },
+  { name: 'Fable', tagline: 'final form — the wardrobe opens up', xp: 420, pixel: 8, speed: 112, unlock: 'party' },
 ];
+
+export const FINAL_STAGE = STAGES.length - 1;
 
 /** xp needed to reach a level; level itself is unbounded. */
 export function xpForLevel(level: number): number {
@@ -39,36 +43,63 @@ export function nextStage(stage: number): StageDef | null {
 }
 
 // ── wardrobe ─────────────────────────────────────────────────────
-// Outfits unlock purely by level, so progression keeps going long after
-// Mythos, the last body evolution.
+// The first outfits ride along with the body evolutions, one per stage.
+// Everything else is earned by levelling up *after* the last evolution, so the
+// wardrobe is what keeps progression going once the pet stops growing.
 
 export interface Unlock {
   outfit: Outfit;
   level: number;
 }
 
-export const UNLOCKS: readonly Unlock[] = [
-  { outfit: 'hardhat', level: 4 },
-  { outfit: 'wizard', level: 7 },
-  { outfit: 'basket', level: 9 },
-  { outfit: 'party', level: 10 },
-  { outfit: 'headphones', level: 12 },
-  { outfit: 'beanie', level: 14 },
-  { outfit: 'shades', level: 16 },
-  { outfit: 'halo', level: 19 },
-  { outfit: 'antenna', level: 22 },
-  { outfit: 'cape', level: 26 },
+export const LEVEL_UNLOCKS: readonly Unlock[] = [
+  { outfit: 'basket', level: 12 },
+  { outfit: 'headphones', level: 14 },
+  { outfit: 'beanie', level: 16 },
+  { outfit: 'shades', level: 18 },
+  { outfit: 'halo', level: 21 },
+  { outfit: 'antenna', level: 24 },
+  { outfit: 'cape', level: 28 },
 ];
 
-export function unlockedOutfits(level: number): Outfit[] {
-  return ['none', ...UNLOCKS.filter((u) => level >= u.level).map((u) => u.outfit)];
+/** Outfits granted by evolutions, in stage order. */
+export function stageUnlocks(): Array<{ outfit: Outfit; stage: number }> {
+  return STAGES.flatMap((s, i) => (s.unlock ? [{ outfit: s.unlock, stage: i }] : []));
 }
 
-/** Outfits earned by crossing from `from` to `to` (exclusive of `from`). */
-export function unlocksBetween(from: number, to: number): Unlock[] {
-  return UNLOCKS.filter((u) => u.level > from && u.level <= to);
+export function unlockedOutfits(stage: number, level: number): Outfit[] {
+  const list: Outfit[] = ['none'];
+  for (let i = 0; i <= stage && i < STAGES.length; i++) {
+    const u = STAGES[i]!.unlock;
+    if (u) list.push(u);
+  }
+  if (stage >= FINAL_STAGE) {
+    for (const u of LEVEL_UNLOCKS) if (level >= u.level) list.push(u.outfit);
+  }
+  return list;
 }
 
-export function nextUnlock(level: number): Unlock | null {
-  return UNLOCKS.find((u) => u.level > level) ?? null;
+/** How an outfit is earned, as a short label for the log and the wardrobe list. */
+export function unlockRequirement(outfit: Outfit): string {
+  const st = STAGES.find((s) => s.unlock === outfit);
+  if (st) return st.name;
+  const u = LEVEL_UNLOCKS.find((x) => x.outfit === outfit);
+  return u ? `lv ${u.level}` : '—';
+}
+
+export function nextUnlock(stage: number, level: number): { outfit: Outfit; requirement: string } | null {
+  for (let i = stage + 1; i < STAGES.length; i++) {
+    const u = STAGES[i]!.unlock;
+    if (u) return { outfit: u, requirement: STAGES[i]!.name };
+  }
+  if (stage >= FINAL_STAGE) {
+    const u = LEVEL_UNLOCKS.find((x) => x.level > level);
+    if (u) return { outfit: u.outfit, requirement: `lv ${u.level}` };
+  }
+  return null;
+}
+
+/** Total number of outfits, including "none". */
+export function wardrobeSize(): number {
+  return 1 + stageUnlocks().length + LEVEL_UNLOCKS.length;
 }

@@ -127,7 +127,7 @@ function drainEvents(): void {
         particles.spawn('star', pet.top.x, pet.top.y, 5);
         break;
       case 'unlocked':
-        ui.log(`Unlocked outfit: ${OUTFITS[e.outfit].label} (lv ${e.level})`, 'ok');
+        ui.log(`Unlocked outfit: ${OUTFITS[e.outfit].label} (${e.requirement})`, 'ok');
         ui.log(`now wearing it — /outfits to see the wardrobe`, 'sub');
         particles.spawn('confetti', pet.top.x + (Math.random() - 0.5) * 60, pet.top.y - 40, 14);
         doSave();

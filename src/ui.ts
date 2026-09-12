@@ -3,7 +3,7 @@ import { FOOD_KINDS, type FoodKind, type Tool } from './types';
 import { FOODS } from './logic';
 import { FOOD_SPRITES } from './sprites';
 import { Renderer } from './renderer';
-import { STAGES, levelForXp, nextStage, nextUnlock, xpForLevel } from './evolution';
+import { levelForXp, nextStage, nextUnlock, xpForLevel } from './evolution';
 
 export type LogClass = 'act' | 'sub' | 'sys' | 'ok' | 'err' | 'user' | 'pet';
 
@@ -118,7 +118,7 @@ export class UI {
     const base = xpForLevel(lvl);
     const span = Math.max(1, xpForLevel(lvl + 1) - base);
     const nextSt = nextStage(pet.stage);
-    const unlock = nextUnlock(lvl);
+    const unlock = nextUnlock(pet.stage, lvl);
     const moodGlyph =
       pet.mood === 'sleeping' ? 'zzz' : pet.mood === 'eating' ? 'nom' : pet.mood === 'evolving' ? '✻ ✻ ✻' : pet.mood === 'sad' ? ':(' : pet.mood === 'happy' || pet.mood === 'excited' ? ':)' : ':|';
     const low = (v: number) => (v < 25 ? ' low' : '');
@@ -134,7 +134,7 @@ export class UI {
     if (nextSt) {
       lines.push(`<span class="k">evolve  </span> <span class="bar">${bar(((s.xp - pet.def.xp) / Math.max(1, nextSt.xp - pet.def.xp)) * 100)}</span> <span class="k">${nextSt.xp} xp → ${esc(nextSt.name)}</span>`);
     }
-    lines.push(unlock ? `<span class="k">next    </span> ✻ ${esc(unlock.outfit)} <span class="k">@ lv ${unlock.level}</span>` : `<span class="k">next    </span> <span class="k">wardrobe complete</span>`);
+    lines.push(unlock ? `<span class="k">next    </span> ✻ ${esc(unlock.outfit)} <span class="k">@ ${esc(unlock.requirement)}</span>` : `<span class="k">next    </span> <span class="k">wardrobe complete</span>`);
 
     const html = lines.join('\n');
     if (html !== this.lastStats) {
@@ -152,7 +152,4 @@ export class UI {
     this.hintEl.classList.add('hidden');
   }
 
-  static get stageNames(): readonly string[] {
-    return STAGES.map((s) => s.name);
-  }
 }

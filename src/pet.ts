@@ -1,6 +1,6 @@
 import type { EyeStyle, FoodKind, Mood, SaveData, Stats, Vec } from './types';
 import { FOOD_KINDS } from './types';
-import { STAGES, levelForXp, stageForXp, unlockedOutfits, unlocksBetween, type StageDef } from './evolution';
+import { STAGES, levelForXp, stageForXp, unlockRequirement, unlockedOutfits, type StageDef } from './evolution';
 import { DEFAULT_STATS, FOODS, applyFood, clamp, decay, moodFromStats, offlineDecay } from './logic';
 import { OUTFITS, OUTFIT_NAMES, POSES, mapSize, type Outfit, type Pose } from './sprites';
 
@@ -28,7 +28,7 @@ export type PetEvent =
   | { type: 'evolve-start'; to: number }
   | { type: 'evolved'; from: number; to: number }
   | { type: 'levelup'; level: number }
-  | { type: 'unlocked'; outfit: Outfit; level: number }
+  | { type: 'unlocked'; outfit: Outfit; requirement: string }
   | { type: 'poked' }
   | { type: 'slept' }
   | { type: 'woke' };
@@ -86,16 +86,21 @@ export class Pet {
   lastInteraction = 0;
   caffeineUntil = 0;
   private chatterAt = 0;
+  /** outfits already announced, so a reload never re-fires the unlock banner */
+  private announced: Outfit[] = [];
 
   events: PetEvent[] = [];
 
   constructor(save: SaveData | null, now: number) {
     this.name = save?.name ?? 'claude';
     this.stats = save ? offlineDecay(save.stats, Date.now() - save.savedAt) : { ...DEFAULT_STATS };
-    this.stage = save ? clamp(save.stage, 0, STAGES.length - 1) : 0;
+    // stage is a pure function of xp, so derive it rather than trusting the
+    // saved copy — that keeps an edited or stale save self-healing
+    this.stage = stageForXp(this.stats.xp);
     this.level = levelForXp(this.stats.xp);
+    this.announced = unlockedOutfits(this.stage, this.level);
     const savedOutfit = save?.outfit as Outfit | undefined;
-    this.outfit = savedOutfit && unlockedOutfits(this.level).includes(savedOutfit) ? savedOutfit : 'none';
+    this.outfit = savedOutfit && this.announced.includes(savedOutfit) ? savedOutfit : 'none';
     this.fed = { token: 0, coffee: 0, bug: 0, commit: 0 };
     for (const k of FOOD_KINDS) this.fed[k] = save?.fed?.[k] ?? 0;
     this.pokes = save?.pokes ?? 0;
@@ -153,7 +158,7 @@ export class Pet {
   }
 
   unlocked(): Outfit[] {
-    return unlockedOutfits(this.level);
+    return unlockedOutfits(this.stage, this.level);
   }
 
   /** Change outfit; false when unknown or not yet unlocked. */
@@ -455,17 +460,27 @@ export class Pet {
     }
   }
 
+  /**
+   * Announce anything newly unlocked and auto-equip it. Driven off the
+   * unlocked-set rather than the triggering event, so it behaves the same
+   * whether a level-up, an evolution, or both happened at once.
+   */
+  private grantUnlocks(): void {
+    for (const outfit of this.unlocked()) {
+      if (this.announced.includes(outfit)) continue;
+      this.announced.push(outfit);
+      this.outfit = outfit;
+      this.emit({ type: 'unlocked', outfit, requirement: unlockRequirement(outfit) });
+    }
+  }
+
   /** level-ups, wardrobe unlocks and evolutions, in that order */
   private checkProgress(): void {
     const lvl = levelForXp(this.stats.xp);
     if (lvl > this.level) {
-      const from = this.level;
       this.level = lvl;
       this.emit({ type: 'levelup', level: lvl });
-      for (const u of unlocksBetween(from, lvl)) {
-        this.outfit = u.outfit;
-        this.emit({ type: 'unlocked', outfit: u.outfit, level: u.level });
-      }
+      this.grantUnlocks();
     }
     const next = stageForXp(this.stats.xp);
     if (next > this.stage) {
@@ -486,6 +501,7 @@ export class Pet {
     this.jumpV = -380;
     this.setMood('excited', 4000, now);
     this.emit({ type: 'evolved', from, to: this.stage });
+    this.grantUnlocks();
     this.say(`✻ evolved → ${this.def.name}!`, 3200);
   }
 
@@ -511,6 +527,7 @@ export class Pet {
     this.stage = 0;
     this.level = 1;
     this.outfit = 'none';
+    this.announced = ['none'];
     this.chasing = false;
     this.fed = { token: 0, coffee: 0, bug: 0, commit: 0 };
     this.pokes = 0;

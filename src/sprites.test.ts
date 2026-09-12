@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FOOD_SPRITES, OUTFITS, OUTFIT_NAMES, POSES, eyeBoxes, legRowCount, legRuns, mapSize, validateMap } from './sprites';
-import { STAGES, UNLOCKS, levelForXp, unlockedOutfits, unlocksBetween, nextUnlock, xpForLevel } from './evolution';
+import { FINAL_STAGE, LEVEL_UNLOCKS, STAGES, levelForXp, nextUnlock, stageUnlocks, unlockRequirement, unlockedOutfits, wardrobeSize, xpForLevel } from './evolution';
 
 describe('pixel maps', () => {
   it('pose sprites are rectangular, use known chars and share one canvas', () => {
@@ -53,38 +53,63 @@ describe('stages', () => {
 });
 
 describe('wardrobe', () => {
-  it('unlock levels ascend and every outfit is reachable exactly once', () => {
-    for (let i = 1; i < UNLOCKS.length; i++) expect(UNLOCKS[i]!.level).toBeGreaterThan(UNLOCKS[i - 1]!.level);
-    const names = UNLOCKS.map((u) => u.outfit);
+  const maxLevel = 999;
+
+  it('gives every stage after the first exactly one outfit, in stage order', () => {
+    expect(STAGES[0]!.unlock).toBeNull();
+    const earned = stageUnlocks();
+    expect(earned.map((u) => u.stage)).toEqual([1, 2, 3]);
+    expect(earned.map((u) => u.outfit)).toEqual(['hardhat', 'wizard', 'party']);
+  });
+
+  it('covers every outfit exactly once across the two routes', () => {
+    const names = [...stageUnlocks().map((u) => u.outfit), ...LEVEL_UNLOCKS.map((u) => u.outfit)];
     expect(new Set(names).size).toBe(names.length);
     expect(names).not.toContain('none');
     expect(names.length).toBe(OUTFIT_NAMES.length - 1);
+    expect(wardrobeSize()).toBe(OUTFIT_NAMES.length);
   });
 
-  it('grows from just "none" to the full wardrobe', () => {
-    expect(unlockedOutfits(1)).toEqual(['none']);
-    expect(unlockedOutfits(999)).toHaveLength(UNLOCKS.length + 1);
+  it('unlock levels ascend and all sit above the final evolution', () => {
+    const finalLevel = levelForXp(STAGES[FINAL_STAGE]!.xp);
+    for (let i = 0; i < LEVEL_UNLOCKS.length; i++) {
+      expect(LEVEL_UNLOCKS[i]!.level, LEVEL_UNLOCKS[i]!.outfit).toBeGreaterThan(finalLevel);
+      if (i > 0) expect(LEVEL_UNLOCKS[i]!.level).toBeGreaterThan(LEVEL_UNLOCKS[i - 1]!.level);
+    }
   });
 
-  it('outfits are cosmetic only — every layer is a valid overlay', () => {
-    const total = Object.values(OUTFITS).reduce((n, o) => n + o.layers.length, 0);
-    expect(total).toBeGreaterThan(OUTFIT_NAMES.length - 1);
+  it('follows the stage ladder before the final form', () => {
+    expect(unlockedOutfits(0, maxLevel)).toEqual(['none']);
+    expect(unlockedOutfits(1, maxLevel)).toEqual(['none', 'hardhat']);
+    expect(unlockedOutfits(2, maxLevel)).toEqual(['none', 'hardhat', 'wizard']);
   });
 
-  it('keeps unlocking well past the last evolution', () => {
-    const mythosLevel = levelForXp(STAGES[STAGES.length - 1]!.xp);
-    const later = UNLOCKS.filter((u) => u.level > mythosLevel);
-    expect(later.length).toBeGreaterThanOrEqual(5);
-    expect(nextUnlock(mythosLevel)?.outfit).toBe(later[0]!.outfit);
-    expect(nextUnlock(999)).toBeNull();
+  it('withholds every level outfit until the pet reaches the final form', () => {
+    for (let stage = 0; stage < FINAL_STAGE; stage++) {
+      const list = unlockedOutfits(stage, maxLevel);
+      for (const u of LEVEL_UNLOCKS) expect(list, `stage ${stage}`).not.toContain(u.outfit);
+    }
+    expect(unlockedOutfits(FINAL_STAGE, maxLevel)).toHaveLength(wardrobeSize());
   });
 
-  it('reports exactly the outfits earned by a jump in level', () => {
-    const first = UNLOCKS[0]!;
-    const second = UNLOCKS[1]!;
-    expect(unlocksBetween(1, first.level).map((u) => u.outfit)).toEqual([first.outfit]);
-    expect(unlocksBetween(first.level, second.level).map((u) => u.outfit)).toEqual([second.outfit]);
-    expect(unlocksBetween(5, 5)).toEqual([]);
+  it('hands out level outfits one at a time once final', () => {
+    const first = LEVEL_UNLOCKS[0]!;
+    expect(unlockedOutfits(FINAL_STAGE, first.level - 1)).toEqual(['none', 'hardhat', 'wizard', 'party']);
+    expect(unlockedOutfits(FINAL_STAGE, first.level)).toContain(first.outfit);
+  });
+
+  it('points at the next thing to earn, by evolution then by level', () => {
+    expect(nextUnlock(0, 1)).toEqual({ outfit: 'hardhat', requirement: 'Sonnet' });
+    expect(nextUnlock(2, 1)).toEqual({ outfit: 'party', requirement: STAGES[FINAL_STAGE]!.name });
+    const first = LEVEL_UNLOCKS[0]!;
+    expect(nextUnlock(FINAL_STAGE, 1)).toEqual({ outfit: first.outfit, requirement: `lv ${first.level}` });
+    expect(nextUnlock(FINAL_STAGE, maxLevel)).toBeNull();
+  });
+
+  it('describes how each outfit is earned', () => {
+    expect(unlockRequirement('hardhat')).toBe('Sonnet');
+    expect(unlockRequirement('party')).toBe(STAGES[FINAL_STAGE]!.name);
+    expect(unlockRequirement('cape')).toBe(`lv ${LEVEL_UNLOCKS[LEVEL_UNLOCKS.length - 1]!.level}`);
   });
 
   it('xpForLevel and levelForXp agree', () => {

@@ -67,8 +67,13 @@ describe('evolution', () => {
 
   it('levels keep climbing past the final stage', () => {
     const last = STAGES[STAGES.length - 1]!;
+    expect(last.name).toBe('Fable');
     expect(stageForXp(last.xp * 10)).toBe(STAGES.length - 1);
     expect(levelForXp(last.xp * 10)).toBeGreaterThan(levelForXp(last.xp));
+  });
+
+  it('every stage after the first grants one outfit', () => {
+    expect(STAGES.filter((s) => s.unlock).length).toBe(STAGES.length - 1);
   });
 
   it('maps xp to stage', () => {
