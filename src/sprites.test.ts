@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FOOD_SPRITES, OUTFITS, POSES, eyeBoxes, legRowCount, legRuns, mapSize, validateMap } from './sprites';
-import { STAGES, unlockedOutfits } from './evolution';
+import { BASKET, BUSH, FOOD_SPRITES, OUTFITS, OUTFIT_NAMES, POSES, eyeBoxes, legRowCount, legRuns, mapSize, validateMap } from './sprites';
+import { STAGES, UNLOCKS, levelForXp, unlockedOutfits, unlocksBetween, nextUnlock, xpForLevel } from './evolution';
 
 describe('pixel maps', () => {
   it('pose sprites are rectangular, use known chars and share one canvas', () => {
@@ -11,8 +11,10 @@ describe('pixel maps', () => {
     }
   });
 
-  it('food sprites are rectangular and use known chars', () => {
+  it('food, bush and basket sprites are valid', () => {
     for (const [k, m] of Object.entries(FOOD_SPRITES)) expect(validateMap(m), k).toBeNull();
+    expect(validateMap(BUSH)).toBeNull();
+    expect(validateMap(BASKET)).toBeNull();
   });
 
   it('outfit layers are valid and declare how far they rise above the head', () => {
@@ -22,6 +24,11 @@ describe('pixel maps', () => {
         expect(-l.y, name).toBeLessThanOrEqual(o.above);
       }
     }
+  });
+
+  it('every outfit name has a definition and vice versa', () => {
+    expect(new Set(OUTFIT_NAMES).size).toBe(OUTFIT_NAMES.length);
+    expect(Object.keys(OUTFITS).sort()).toEqual([...OUTFIT_NAMES].sort());
   });
 
   it('every pose has two 1px eyes and four legs', () => {
@@ -35,9 +42,10 @@ describe('pixel maps', () => {
     }
   });
 
-  it('idle legs are two rows, crawl legs one row', () => {
+  it('idle legs are two rows, crawl and pick one row', () => {
     expect(legRowCount(POSES.idle)).toBe(2);
     expect(legRowCount(POSES.crawl)).toBe(1);
+    expect(legRowCount(POSES.pick)).toBe(1);
   });
 });
 
@@ -45,11 +53,42 @@ describe('stages', () => {
   it('pixel scale never shrinks', () => {
     for (let i = 1; i < STAGES.length; i++) expect(STAGES[i]!.pixel).toBeGreaterThanOrEqual(STAGES[i - 1]!.pixel);
   });
+});
 
-  it('each evolution unlocks a distinct outfit', () => {
-    const unlocks = STAGES.map((s) => s.unlock).filter(Boolean);
-    expect(new Set(unlocks).size).toBe(unlocks.length);
-    expect(unlockedOutfits(0)).toEqual(['none']);
-    expect(unlockedOutfits(STAGES.length - 1)).toHaveLength(unlocks.length + 1);
+describe('wardrobe', () => {
+  it('unlock levels ascend and every outfit is reachable exactly once', () => {
+    for (let i = 1; i < UNLOCKS.length; i++) expect(UNLOCKS[i]!.level).toBeGreaterThan(UNLOCKS[i - 1]!.level);
+    const names = UNLOCKS.map((u) => u.outfit);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).not.toContain('none');
+    expect(names.length).toBe(OUTFIT_NAMES.length - 1);
+  });
+
+  it('grows from just "none" to the full wardrobe', () => {
+    expect(unlockedOutfits(1)).toEqual(['none']);
+    expect(unlockedOutfits(999)).toHaveLength(UNLOCKS.length + 1);
+  });
+
+  it('keeps unlocking well past the last evolution', () => {
+    const mythosLevel = levelForXp(STAGES[STAGES.length - 1]!.xp);
+    const later = UNLOCKS.filter((u) => u.level > mythosLevel);
+    expect(later.length).toBeGreaterThanOrEqual(5);
+    expect(nextUnlock(mythosLevel)?.outfit).toBe(later[0]!.outfit);
+    expect(nextUnlock(999)).toBeNull();
+  });
+
+  it('reports exactly the outfits earned by a jump in level', () => {
+    const first = UNLOCKS[0]!;
+    const second = UNLOCKS[1]!;
+    expect(unlocksBetween(1, first.level).map((u) => u.outfit)).toEqual([first.outfit]);
+    expect(unlocksBetween(first.level, second.level).map((u) => u.outfit)).toEqual([second.outfit]);
+    expect(unlocksBetween(5, 5)).toEqual([]);
+  });
+
+  it('xpForLevel and levelForXp agree', () => {
+    for (let l = 1; l < 40; l++) {
+      expect(levelForXp(xpForLevel(l))).toBe(l);
+      expect(levelForXp(xpForLevel(l) - 1)).toBe(Math.max(1, l - 1));
+    }
   });
 });

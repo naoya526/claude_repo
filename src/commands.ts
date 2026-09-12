@@ -2,7 +2,7 @@ import type { Pet } from './pet';
 import type { UI } from './ui';
 import { FOOD_KINDS, type FoodKind, type Vec } from './types';
 import { FOODS } from './logic';
-import { STAGES, nextStage } from './evolution';
+import { STAGES, UNLOCKS, levelForXp, nextStage, xpForLevel } from './evolution';
 import { OUTFITS } from './sprites';
 
 export interface CommandContext {
@@ -15,15 +15,15 @@ export interface CommandContext {
 }
 
 const HELP = [
-  '/feed <kind>   drop a snack (token|coffee|bug|commit)',
+  '/feed <kind>   drop a snack (token|coffee|bug|commit|berry)',
   '/pet           poke it',
   '/status        print stats',
   '/name <name>   rename',
-  '/wear <outfit> dress up (unlocked by evolving)',
+  '/wear <outfit> dress up · /outfits lists the wardrobe',
   '/sleep /wake   toggle nap',
   '/stages        evolution chart',
   '/save /reset /clear',
-  'keys: 1-4 food · 0/esc cursor · space poke · / prompt',
+  'keys: 1-5 food · 0/esc cursor · space poke · / prompt',
 ];
 
 const REPLIES = ['I am a pet, not a chatbot ✻', 'try /help', '*tilts head*', 'beep boop', 'did you mean /feed?', '…tokens?'];
@@ -65,9 +65,11 @@ export function runCommand(raw: string, ctx: CommandContext): void {
 
     case 'status': {
       const s = pet.stats;
+      const lvl = levelForXp(s.xp);
       const nx = nextStage(pet.stage);
-      ui.log(`${pet.name} · ${pet.def.name} (stage ${pet.stage + 1}/${STAGES.length}) · mood ${pet.mood} · wearing ${pet.outfit}`, 'act');
-      ui.log(`hunger ${Math.round(s.hunger)}%  energy ${Math.round(s.energy)}%  joy ${Math.round(s.happiness)}%  xp ${s.xp}${nx ? ` / ${nx.xp}` : ''}`, 'sub');
+      ui.log(`${pet.name} · ${pet.def.name} · lv ${lvl} · mood ${pet.mood} · wearing ${pet.outfit}`, 'act');
+      ui.log(`hunger ${Math.round(s.hunger)}%  energy ${Math.round(s.energy)}%  joy ${Math.round(s.happiness)}%`, 'sub');
+      ui.log(`xp ${s.xp} · next level at ${xpForLevel(lvl + 1)}${nx ? ` · ${nx.name} at ${nx.xp}` : ''}`, 'sub');
       ui.log(`fed: ${FOOD_KINDS.map((k) => `${FOODS[k].label} ×${pet.fed[k]}`).join('  ')} · pokes ${pet.pokes}`, 'sub');
       break;
     }
@@ -84,6 +86,19 @@ export function runCommand(raw: string, ctx: CommandContext): void {
       break;
     }
 
+    case 'outfits':
+    case 'wardrobe': {
+      const lvl = levelForXp(pet.stats.xp);
+      ui.log(`wearing ${pet.outfit} · ${pet.unlocked().length}/${UNLOCKS.length + 1} unlocked`, 'act');
+      ui.log(`${pet.outfit === 'none' ? '▶' : ' '} none    ${'lv 1'.padStart(5)}  ${OUTFITS.none.label}`, 'sub');
+      for (const u of UNLOCKS) {
+        const has = lvl >= u.level;
+        const mark = pet.outfit === u.outfit ? '▶' : has ? ' ' : '🔒';
+        ui.log(`${mark} ${u.outfit.padEnd(11)}${`lv ${u.level}`.padStart(5)}  ${has ? OUTFITS[u.outfit].label : `locked — ${xpForLevel(u.level)} xp`}`, 'sub');
+      }
+      break;
+    }
+
     case 'wear':
     case 'outfit': {
       const list = pet.unlocked();
@@ -94,9 +109,10 @@ export function runCommand(raw: string, ctx: CommandContext): void {
       const name = arg.toLowerCase();
       if (pet.wear(name)) {
         ui.log(`now wearing ${OUTFITS[pet.outfit].label}`, 'ok');
-        pet.events.push({ type: 'bubble', text: name === 'none' ? 'back to basics' : `how do I look?`, ms: 2000 });
+        pet.events.push({ type: 'bubble', text: name === 'none' ? 'back to basics' : 'how do I look?', ms: 2000 });
       } else if (name in OUTFITS) {
-        ui.log(`${name} is locked — evolve to unlock it`, 'err');
+        const need = UNLOCKS.find((u) => u.outfit === name);
+        ui.log(`${name} is locked — reach lv ${need?.level ?? '?'} (${xpForLevel(need?.level ?? 1)} xp)`, 'err');
       } else {
         ui.log(`unknown outfit "${arg}" — ${list.join(', ')}`, 'err');
       }
@@ -115,11 +131,14 @@ export function runCommand(raw: string, ctx: CommandContext): void {
 
     case 'stages':
       STAGES.forEach((st, i) => ui.log(`${i === pet.stage ? '▶' : ' '} ${i + 1}. ${st.name.padEnd(7)} ${String(st.xp).padStart(4)} xp  ${st.tagline}`, 'sub'));
+      ui.log(`  after Mythos the levels keep going — see /outfits`, 'sub');
       break;
 
-    case 'save':
-      ui.log(ctx.save() ? 'saved to localStorage' : 'save failed (storage blocked?)', ctx.save() ? 'ok' : 'err');
+    case 'save': {
+      const ok = ctx.save();
+      ui.log(ok ? 'saved to localStorage' : 'save failed (storage blocked?)', ok ? 'ok' : 'err');
       break;
+    }
 
     case 'reset':
       if (arg !== 'confirm') {

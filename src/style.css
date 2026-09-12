@@ -110,13 +110,15 @@ html, body {
 .stats .bar { color: var(--accent); }
 .stats .bar.low { color: var(--red); }
 .stats .bar.xp { color: var(--gold); }
+.stats .bar.berry { color: #c9455a; }
 .stats .dim { color: var(--border); }
 .stats .name { color: var(--cream); font-weight: 600; }
 
 /* ── tray ─────────────────────────────────────────────── */
-.tray { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.tray { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
 .tool {
   appearance: none;
+  min-width: 0;
   border: 1px solid var(--border);
   background: var(--panel-2);
   color: var(--text);
@@ -133,7 +135,7 @@ html, body {
 }
 .tool:hover { border-color: var(--accent-dim); }
 .tool.selected { border-color: var(--accent); background: #2a211d; }
-.tool canvas { width: 28px; height: 28px; image-rendering: pixelated; }
+.tool canvas { width: 26px; height: 26px; image-rendering: pixelated; }
 .tool .count { color: var(--muted); font-size: 10px; }
 .tool .key { color: var(--muted); font-size: 10px; }
 
@@ -206,9 +208,15 @@ html, body {
   .stage canvas { cursor: auto; }
   .hint { font-size: 10px; }
 }
-@media (max-width: 480px) {
-  .tray { grid-template-columns: repeat(5, 1fr); gap: 4px; }
-  .tool { padding: 4px 2px; }
+@media (max-width: 640px) {
+  .tray { grid-template-columns: repeat(6, 1fr); gap: 3px; }
+  .tool { padding: 4px 1px 3px; gap: 1px; font-size: 10px; }
+  .tool canvas { width: 20px; height: 20px; }
   .tool .key { display: none; }
   .titlebar .title { font-size: 11px; }
+  .statusline { font-size: 10px; gap: 8px; }
+  .statusline span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+@media (max-width: 380px) {
+  .tool span:not(.count) { display: none; }
 }

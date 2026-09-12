@@ -1,9 +1,9 @@
 import type { Pet } from './pet';
 import { FOOD_KINDS, type FoodKind, type Tool } from './types';
 import { FOODS } from './logic';
-import { FOOD_SPRITES } from './sprites';
+import { BASKET_CAPACITY, FOOD_SPRITES } from './sprites';
 import { Renderer } from './renderer';
-import { STAGES, levelForXp, nextStage } from './evolution';
+import { STAGES, levelForXp, nextStage, nextUnlock, xpForLevel } from './evolution';
 
 export type LogClass = 'act' | 'sub' | 'sys' | 'ok' | 'err' | 'user' | 'pet';
 
@@ -73,7 +73,7 @@ export class UI {
       if (tool === 'cursor') Renderer.renderIcon(icon, ['.......', '.#.....', '.##....', '.###...', '.####..', '.#####.', '..#.#..']);
       else Renderer.renderIcon(icon, FOOD_SPRITES[tool]);
       const label = document.createElement('span');
-      label.textContent = tool;
+      label.textContent = tool === 'berry' ? 'berry' : tool;
       const key = document.createElement('span');
       key.className = 'key';
       key.textContent = i === 0 ? '[0]' : `[${i}]`;
@@ -114,20 +114,32 @@ export class UI {
 
   renderStats(pet: Pet): void {
     const s = pet.stats;
-    const stage = pet.def;
-    const next = nextStage(pet.stage);
     const lvl = levelForXp(s.xp);
-    const xpPct = next ? ((s.xp - stage.xp) / (next.xp - stage.xp)) * 100 : 100;
+    const base = xpForLevel(lvl);
+    const span = Math.max(1, xpForLevel(lvl + 1) - base);
+    const nextSt = nextStage(pet.stage);
+    const unlock = nextUnlock(lvl);
     const moodGlyph =
       pet.mood === 'sleeping' ? 'zzz' : pet.mood === 'eating' ? 'nom' : pet.mood === 'evolving' ? '✻ ✻ ✻' : pet.mood === 'sad' ? ':(' : pet.mood === 'happy' || pet.mood === 'excited' ? ':)' : ':|';
     const low = (v: number) => (v < 25 ? ' low' : '');
-    const html =
-      `<span class="name">${esc(pet.name)}</span> <span class="k">·</span> ${esc(stage.name)} <span class="k">· lv</span> ${lvl} <span class="k">· stage</span> ${pet.stage + 1}<span class="k">/${STAGES.length}</span>${pet.outfit !== 'none' ? ` <span class="k">·</span> ${esc(pet.outfit)}` : ''}\n` +
-      `<span class="k">mood    </span> ${esc(moodGlyph)}${pet.caffeinated ? ' <span class="bar xp">☕</span>' : ''}\n` +
-      `<span class="k">hunger  </span> <span class="bar${low(s.hunger)}">${bar(s.hunger)}</span> ${String(Math.round(s.hunger)).padStart(3)}%\n` +
-      `<span class="k">energy  </span> <span class="bar${low(s.energy)}">${bar(s.energy)}</span> ${String(Math.round(s.energy)).padStart(3)}%\n` +
-      `<span class="k">joy     </span> <span class="bar${low(s.happiness)}">${bar(s.happiness)}</span> ${String(Math.round(s.happiness)).padStart(3)}%\n` +
-      `<span class="k">xp      </span> <span class="bar xp">${bar(xpPct)}</span> ${s.xp}${next ? `<span class="k">/${next.xp} → ${esc(next.name)}</span>` : ' <span class="k">max</span>'}`;
+
+    const lines = [
+      `<span class="name">${esc(pet.name)}</span> <span class="k">·</span> ${esc(pet.def.name)} <span class="k">· lv</span> ${lvl}${pet.outfit !== 'none' ? ` <span class="k">·</span> ${esc(pet.outfit)}` : ''}`,
+      `<span class="k">mood    </span> ${esc(moodGlyph)}${pet.caffeinated ? ' <span class="bar xp">☕</span>' : ''}`,
+      `<span class="k">hunger  </span> <span class="bar${low(s.hunger)}">${bar(s.hunger)}</span> ${String(Math.round(s.hunger)).padStart(3)}%`,
+      `<span class="k">energy  </span> <span class="bar${low(s.energy)}">${bar(s.energy)}</span> ${String(Math.round(s.energy)).padStart(3)}%`,
+      `<span class="k">joy     </span> <span class="bar${low(s.happiness)}">${bar(s.happiness)}</span> ${String(Math.round(s.happiness)).padStart(3)}%`,
+      `<span class="k">xp      </span> <span class="bar xp">${bar(((s.xp - base) / span) * 100)}</span> ${s.xp} <span class="k">→ lv ${lvl + 1}</span>`,
+    ];
+    if (nextSt) {
+      lines.push(`<span class="k">evolve  </span> <span class="bar">${bar(((s.xp - pet.def.xp) / Math.max(1, nextSt.xp - pet.def.xp)) * 100)}</span> <span class="k">${nextSt.xp} xp → ${esc(nextSt.name)}</span>`);
+    }
+    if (pet.showBasket) {
+      lines.push(`<span class="k">basket  </span> <span class="bar berry">${'▮'.repeat(pet.basket)}<span class="dim">${'▯'.repeat(BASKET_CAPACITY - pet.basket)}</span></span> <span class="k">${pet.basket}/${BASKET_CAPACITY}</span>`);
+    }
+    lines.push(unlock ? `<span class="k">next    </span> ✻ ${esc(unlock.outfit)} <span class="k">@ lv ${unlock.level}</span>` : `<span class="k">next    </span> <span class="k">wardrobe complete</span>`);
+
+    const html = lines.join('\n');
     if (html !== this.lastStats) {
       this.statsEl.innerHTML = html;
       this.lastStats = html;
@@ -141,5 +153,9 @@ export class UI {
 
   hideHint(): void {
     this.hintEl.classList.add('hidden');
+  }
+
+  static get stageNames(): readonly string[] {
+    return STAGES.map((s) => s.name);
   }
 }

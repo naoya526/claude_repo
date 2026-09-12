@@ -2,10 +2,13 @@ import type { FoodKind } from './types';
 
 /**
  * Pixel maps. One string per row, one char per pixel.
- *   .  transparent        #  body (orange)     @  eye (drawn by the renderer)
- *   +  dark accent        *  gold              c  cream       w  white
- *   g  green              k  coffee brown      r  grey        d  dark grey
- *   y  hard-hat yellow    o  hard-hat emblem   p  wizard purple
+ *   .  transparent      #  body (orange)     @  eye (drawn by the renderer)
+ *   +  dark accent      *  gold              c  cream        w  white
+ *   g  green            G  dark green        n  bark
+ *   k  coffee brown     r  grey              d  dark grey    s  steel
+ *   y  hard-hat yellow  o  hat emblem        p  wizard purple
+ *   h  basket straw     H  basket shadow
+ *   b  raspberry        B  raspberry highlight
  */
 export type PixelMap = readonly string[];
 
@@ -16,13 +19,20 @@ export const COLORS = {
   cream: '#F4F3EE',
   gold: '#F2C14E',
   green: '#5FB57A',
+  darkGreen: '#3E8257',
+  bark: '#6B4A33',
   coffee: '#5C3B2E',
   white: '#FFFFFF',
   grey: '#9A9A9A',
   darkGrey: '#5A5A5A',
+  steel: '#8A8F98',
   hatYellow: '#E9B949',
   hatEmblem: '#C77D2E',
   purple: '#5A4A9C',
+  straw: '#D9A441',
+  strawDark: '#A8752A',
+  berry: '#A8243C',
+  berryLight: '#C9455A',
   grid: 'rgba(244,243,238,0.055)',
 } as const;
 
@@ -34,19 +44,26 @@ export const PALETTE: Readonly<Record<string, string>> = {
   c: COLORS.cream,
   w: COLORS.white,
   g: COLORS.green,
+  G: COLORS.darkGreen,
+  n: COLORS.bark,
   k: COLORS.coffee,
   r: COLORS.grey,
   d: COLORS.darkGrey,
+  s: COLORS.steel,
   y: COLORS.hatYellow,
   o: COLORS.hatEmblem,
   p: COLORS.purple,
+  h: COLORS.straw,
+  H: COLORS.strawDark,
+  b: COLORS.berry,
+  B: COLORS.berryLight,
 };
 
 // ── the mascot ───────────────────────────────────────────────────
-// All poses share a 16 × 9 canvas so switching poses never shifts the body.
-// Body: cols 2..12, rows 0..6 (top corners cut). Arms: col 1 / col 13. Legs: 4 × 1 px.
+// Every pose shares a 16 × 9 canvas so switching poses never shifts the body.
+// Body: cols 2..12, rows 0..6. Arms: col 1 / col 13. Legs: 4 × 1 px.
 
-export type Pose = 'idle' | 'armup' | 'crawl';
+export type Pose = 'idle' | 'armup' | 'crawl' | 'pick';
 
 const IDLE: PixelMap = [
   '...#########....',
@@ -73,7 +90,7 @@ const ARMUP: PixelMap = [
   '....#.#.#.#.....',
 ];
 
-/** crouched, front arm reaching, grey cable-tail behind — chasing the mouse (faces right) */
+/** crouched, front arm reaching, grey cable-tail behind — chasing the mouse */
 const CRAWL: PixelMap = [
   '................',
   '...#########....',
@@ -86,27 +103,54 @@ const CRAWL: PixelMap = [
   '....#.#.#.#.....',
 ];
 
-export const POSES: Readonly<Record<Pose, PixelMap>> = { idle: IDLE, armup: ARMUP, crawl: CRAWL };
+/** stretched up on its toes, arm reaching out for a berry (body sits one row lower) */
+const PICK: PixelMap = [
+  '..............#.',
+  '...#########.#..',
+  '..###########...',
+  '..##@#####@##...',
+  '.#############..',
+  '.#############..',
+  '..###########...',
+  '..###########...',
+  '....#.#.#.#.....',
+];
 
-/** where the head's top-left pixel sits per pose, relative to the idle pose */
+export const POSES: Readonly<Record<Pose, PixelMap>> = { idle: IDLE, armup: ARMUP, crawl: CRAWL, pick: PICK };
+
+/** where the body sits per pose, relative to the idle pose */
 export const POSE_HEAD_OFFSET: Readonly<Record<Pose, { x: number; y: number }>> = {
   idle: { x: 0, y: 0 },
   armup: { x: 0, y: 0 },
   crawl: { x: 0, y: 1 },
+  pick: { x: 0, y: 1 },
 };
+
+// ── the berry basket ─────────────────────────────────────────────
+
+export const BASKET: PixelMap = ['.HH.', 'H..H', 'hhhh', 'hHhH', 'hhhh', '.hh.'];
+/** top-left of the basket in idle-map coordinates */
+export const BASKET_AT = { x: 1, y: 1 } as const;
+/** where a tossed berry lands, and where it leaves the outstretched arm */
+export const BASKET_SLOT = { x: 2.5, y: 4 } as const;
+export const BERRY_TIP = { x: 15, y: -2 } as const;
+/** how many berries fit before the pet tips the basket into its mouth */
+export const BASKET_CAPACITY = 5;
 
 // ── outfits (overlays drawn after the body, in idle-map coordinates) ─────────
 
-export type Outfit = 'none' | 'hardhat' | 'wizard' | 'party';
-export const OUTFIT_NAMES: readonly Outfit[] = ['none', 'hardhat', 'wizard', 'party'];
+export type Outfit = 'none' | 'hardhat' | 'wizard' | 'party' | 'headphones' | 'beanie' | 'shades' | 'halo' | 'antenna' | 'cape';
+export const OUTFIT_NAMES: readonly Outfit[] = ['none', 'hardhat', 'wizard', 'party', 'headphones', 'beanie', 'shades', 'halo', 'antenna', 'cape'];
 
 export interface OutfitLayer {
   map: PixelMap;
-  /** top-left in idle-map coordinates (negative = above the head) */
+  /** top-left in idle-map coordinates (negative y = above the head) */
   x: number;
   y: number;
   /** only draw for these poses (default: all) */
   poses?: readonly Pose[];
+  /** draw before the body instead of after — for things that trail behind */
+  behind?: boolean;
 }
 
 export interface OutfitDef {
@@ -129,30 +173,76 @@ const WIZARD_HAT: PixelMap = [
   'ppppppppppp',
 ];
 const CROWN: PixelMap = ['*..*..*', '*.***.*', '*******'];
+const HEADPHONES: PixelMap = ['...sssssss...', '..s.......s..', '.s.........s.', 'ss.........ss', 'ss.........ss'];
+const BEANIE: PixelMap = ['.....c.....', '..GGGGGGG..', '.GGGGGGGGG.', 'ggggggggggg', 'ggggggggggg'];
+const SHADES: PixelMap = ['sssssssssss', 's+++sss+++s', '.sss...sss.'];
+const HALO: PixelMap = ['...*****...', '..*.....*..', '..*.....*..', '...*****...'];
+const SPARKLE: PixelMap = ['*.*.*', '.***.', '*****', '.***.', '*.*.*'];
+const SPARKLE_STEM: PixelMap = ['#', '#'];
+const CAPE: PixelMap = ['...b', '..bb', '.bbb', 'bbbb', 'bbbb', 'bbbb', '.bbb', '..bb'];
+const CAPE_COLLAR: PixelMap = ['bbbbbbbbb'];
 
 export const OUTFITS: Readonly<Record<Outfit, OutfitDef>> = {
-  none: { label: 'none', above: 0, layers: [] },
+  none: { label: 'nothing at all', above: 0, layers: [] },
   hardhat: {
     label: 'hard hat & wrench',
     above: 4,
     layers: [
       { map: HARD_HAT, x: 2, y: -2 },
       { map: WRENCH, x: 14, y: 0, poses: ['idle', 'crawl'] },
-      { map: WRENCH, x: 14, y: -4, poses: ['armup'] },
+      { map: WRENCH, x: 14, y: -4, poses: ['armup', 'pick'] },
     ],
   },
   wizard: { label: 'wizard hat', above: 7, layers: [{ map: WIZARD_HAT, x: 2, y: -7 }] },
   party: { label: 'crown & confetti', above: 3, layers: [{ map: CROWN, x: 5, y: -3 }] },
+  headphones: { label: 'headphones', above: 2, layers: [{ map: HEADPHONES, x: 1, y: -2 }] },
+  beanie: { label: 'knit beanie', above: 4, layers: [{ map: BEANIE, x: 2, y: -4 }] },
+  shades: { label: 'sunglasses', above: 0, layers: [{ map: SHADES, x: 2, y: 1 }] },
+  halo: { label: 'halo', above: 6, layers: [{ map: HALO, x: 2, y: -6 }] },
+  antenna: {
+    label: '✻ antenna',
+    above: 6,
+    layers: [
+      { map: SPARKLE, x: 5, y: -6 },
+      { map: SPARKLE_STEM, x: 7, y: -1 },
+    ],
+  },
+  cape: {
+    label: 'crimson cape',
+    above: 0,
+    layers: [
+      { map: CAPE, x: -2, y: 1, behind: true },
+      { map: CAPE_COLLAR, x: 3, y: 1 },
+    ],
+  },
 };
 
-// ── food ─────────────────────────────────────────────────────────
+// ── food & scenery ───────────────────────────────────────────────
 
 export const FOOD_SPRITES: Readonly<Record<FoodKind, PixelMap>> = {
   token: ['.*****.', '*******', '**ccc**', '**c****', '**ccc**', '*******', '.*****.'],
   coffee: ['.c.c...', '..c.c..', 'ccccc..', 'ckkkccc', 'ckkkc.c', 'ckkkccc', '.ccc...'],
   bug: ['g.....g', '.g...g.', '..ggg..', '.ggggg.', 'g.g+g.g', '.ggggg.', 'g.g.g.g'],
   commit: ['...c...', '...c...', '..ccc..', '.cc*cc.', '..ccc..', '...c...', '...c...'],
+  berry: ['..g.g..', '.ggGg..', '..bBb..', '.bBbBb.', '.bbBbb.', '..bbb..', '...b...'],
 };
+
+/** the raspberry bush the pet forages from */
+export const BUSH: PixelMap = [
+  '.....GG.GG.....',
+  '...GGGgggGGG...',
+  '..GGgggggggGG..',
+  '.GGgggggggBbGG.',
+  'GGgBbgggggbbgGG',
+  'GGgbbggggggggGG',
+  'GGgggggggggggGG',
+  '.GGgggBbgggBbG.',
+  '..GGggbbgggbb..',
+  '...GGGgggGGG...',
+  '......nnn......',
+  '......nnn......',
+  '......nnn......',
+];
 
 // ── helpers ──────────────────────────────────────────────────────
 

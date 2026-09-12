@@ -43,11 +43,19 @@ describe('decay', () => {
     expect(s.happiness).toBe(50);
   });
 
-  it('never zeroes everything after a long absence', () => {
-    const s = offlineDecay({ hunger: 100, energy: 10, happiness: 100, xp: 0 }, 1000 * 60 * 60 * 24 * 7);
-    expect(s.hunger).toBeGreaterThan(30);
-    expect(s.happiness).toBeGreaterThan(50);
+  it('gets properly hungry while away, but floors out instead of dying', () => {
+    const hour = 1000 * 60 * 60;
+    expect(offlineDecay(DEFAULT_STATS, hour).hunger).toBeLessThan(DEFAULT_STATS.hunger - 30);
+    const s = offlineDecay({ hunger: 100, energy: 10, happiness: 100, xp: 0 }, hour * 24 * 7);
+    expect(s.hunger).toBeGreaterThanOrEqual(8);
+    expect(s.happiness).toBeGreaterThanOrEqual(20);
     expect(s.energy).toBe(100);
+  });
+
+  it('empties a full belly in a few minutes of play', () => {
+    const minutes = (n: number) => decay({ hunger: 100, energy: 100, happiness: 100, xp: 0 }, n * 60, false).hunger;
+    expect(minutes(2)).toBeGreaterThan(0);
+    expect(minutes(10)).toBe(0);
   });
 });
 
@@ -55,6 +63,12 @@ describe('evolution', () => {
   it('stage thresholds are ascending and start at 0', () => {
     expect(STAGES[0]?.xp).toBe(0);
     for (let i = 1; i < STAGES.length; i++) expect(STAGES[i]!.xp).toBeGreaterThan(STAGES[i - 1]!.xp);
+  });
+
+  it('levels keep climbing past the final stage', () => {
+    const last = STAGES[STAGES.length - 1]!;
+    expect(stageForXp(last.xp * 10)).toBe(STAGES.length - 1);
+    expect(levelForXp(last.xp * 10)).toBeGreaterThan(levelForXp(last.xp));
   });
 
   it('maps xp to stage', () => {

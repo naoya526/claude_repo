@@ -4,7 +4,6 @@ export const clamp = (v: number, lo = 0, hi = 100): number => Math.min(hi, Math.
 
 export interface FoodDef {
   label: string;
-  glyph: string;
   hunger: number;
   energy: number;
   happiness: number;
@@ -13,16 +12,22 @@ export interface FoodDef {
   line: string;
   /** what the log says */
   effect: string;
+  /** picked into the basket with the reach animation instead of eaten on the spot */
+  picked?: boolean;
 }
 
 export const FOODS: Readonly<Record<FoodKind, FoodDef>> = {
-  token: { label: 'token', glyph: '▮', hunger: 22, energy: 0, happiness: 4, xp: 10, line: 'nom nom nom', effect: 'context refilled' },
-  coffee: { label: 'coffee', glyph: '☕', hunger: 4, energy: 35, happiness: 6, xp: 8, line: 'caffeinated!', effect: 'speed boost for 12s' },
-  bug: { label: 'bug', glyph: '🐛', hunger: 8, energy: -4, happiness: 22, xp: 15, line: 'bug fixed ✓', effect: 'very satisfying' },
-  commit: { label: 'commit', glyph: '◆', hunger: 10, energy: 5, happiness: 12, xp: 30, line: 'committed ✓', effect: 'big xp' },
+  token: { label: 'token', hunger: 22, energy: 0, happiness: 4, xp: 10, line: 'nom nom nom', effect: 'context refilled' },
+  coffee: { label: 'coffee', hunger: 4, energy: 35, happiness: 6, xp: 8, line: 'caffeinated!', effect: 'speed boost for 12s' },
+  bug: { label: 'bug', hunger: 8, energy: -4, happiness: 22, xp: 15, line: 'bug fixed ✓', effect: 'very satisfying' },
+  commit: { label: 'commit', hunger: 10, energy: 5, happiness: 12, xp: 30, line: 'committed ✓', effect: 'big xp' },
+  berry: { label: 'raspberry', hunger: 14, energy: 2, happiness: 10, xp: 12, line: 'picked one!', effect: 'into the basket', picked: true },
 };
 
 export const DEFAULT_STATS: Stats = { hunger: 70, energy: 80, happiness: 70, xp: 0 };
+
+/** Stat drain per second while the pet is awake. */
+export const DECAY = { hunger: 0.25, energy: 0.1, happiness: 0.05, happinessStressed: 0.15 } as const;
 
 export interface FeedResult {
   stats: Stats;
@@ -46,25 +51,29 @@ export function applyFood(s: Stats, kind: FoodKind): FeedResult {
 /** Per-second stat drift while the page is open. */
 export function decay(s: Stats, dt: number, sleeping: boolean): Stats {
   if (sleeping) {
-    return { ...s, hunger: clamp(s.hunger - 0.03 * dt), energy: clamp(s.energy + 1.2 * dt) };
+    return { ...s, hunger: clamp(s.hunger - 0.08 * dt), energy: clamp(s.energy + 1.2 * dt) };
   }
   const stressed = s.hunger < 25 || s.energy < 15;
   return {
     ...s,
-    hunger: clamp(s.hunger - 0.08 * dt),
-    energy: clamp(s.energy - 0.06 * dt),
-    happiness: clamp(s.happiness - (stressed ? 0.12 : 0.04) * dt),
+    hunger: clamp(s.hunger - DECAY.hunger * dt),
+    energy: clamp(s.energy - DECAY.energy * dt),
+    happiness: clamp(s.happiness - (stressed ? DECAY.happinessStressed : DECAY.happiness) * dt),
   };
 }
 
-/** Gentle drift applied for time spent away. Capped so a long absence never zeroes everything. */
+/**
+ * Drift applied for time spent away. Hunger runs down much faster than it used
+ * to, but both hunger and joy have a floor: you always come back to a hungry
+ * pet, never to a broken one.
+ */
 export function offlineDecay(s: Stats, elapsedMs: number): Stats {
-  const sec = clamp(elapsedMs / 1000, 0, 2 * 60 * 60);
+  const sec = Math.min(Math.max(elapsedMs / 1000, 0), 3 * 60 * 60);
   return {
     ...s,
-    hunger: clamp(s.hunger - 0.008 * sec),
+    hunger: clamp(s.hunger - 0.03 * sec, 8),
     energy: clamp(s.energy + 0.02 * sec),
-    happiness: clamp(s.happiness - 0.005 * sec),
+    happiness: clamp(s.happiness - 0.008 * sec, 20),
   };
 }
 

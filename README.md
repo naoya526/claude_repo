@@ -2,7 +2,9 @@
 
 An interactive pixel pet of the Claude Code mascot, living inside a terminal-flavoured web page.
 Poke it, lure it around with your cursor, feed it tokens (and coffee, bugs, commits) and watch it evolve
-from **Haiku → Sonnet → Opus → Mythos**, unlocking a hard hat, a wizard hat and a crown along the way.
+from **Haiku → Sonnet → Opus → Mythos**. Left alone it forages the raspberry bush: it stretches up, plucks a
+berry and lobs it over its head into the basket on its back. Levels keep climbing long after the last
+evolution, unlocking ten outfits from a hard hat to a crimson cape.
 
 Written in TypeScript with Vite and a plain Canvas 2D renderer. No runtime dependencies.
 
@@ -23,12 +25,15 @@ npm test           # vitest
 | click / tap the pet (or `space`) | raises an arm, squishes, jumps, hearts |
 | move the mouse | eyes follow; it crawls after the cursor when far away |
 | click empty space | it walks there |
-| press `1`–`4` (or click the tray) then click | drop a token / coffee / bug / commit |
+| press `1`–`5` (or click the tray) then click | drop a token / coffee / bug / commit / raspberry |
+| leave it alone | it forages the bush, wanders, and naps |
 | `/` | focus the prompt |
 
-Commands: `/help` `/feed <kind>` `/pet` `/status` `/name <name>` `/wear <outfit>` `/sleep` `/wake` `/stages` `/save` `/reset confirm` `/clear`
+Commands: `/help` `/feed <kind>` `/pet` `/status` `/name <name>` `/wear <outfit>` `/outfits` `/sleep` `/wake` `/stages` `/save` `/reset confirm` `/clear`
 
-Outfits unlock as it evolves: `hardhat` (Sonnet), `wizard` (Opus), `party` (Mythos). `/wear none` takes it off.
+Outfits unlock by level and auto-equip: `hardhat` lv 4, `wizard` lv 7, `party` lv 10, `headphones` lv 12,
+`beanie` lv 14, `shades` lv 16, `halo` lv 19, `antenna` lv 22, `cape` lv 26. `/outfits` shows the wardrobe
+and `/wear none` takes it all off.
 
 Progress is saved to `localStorage` every few seconds and on tab close.
 

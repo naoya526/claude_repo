@@ -10,16 +10,23 @@ export interface StageDef {
   pixel: number;
   /** walking speed, px/s */
   speed: number;
-  /** outfit unlocked (and auto-equipped) on reaching this stage */
-  unlock: Outfit | null;
 }
 
 export const STAGES: readonly StageDef[] = [
-  { name: 'Haiku', tagline: 'small, quick, curious', xp: 0, pixel: 6, speed: 75, unlock: null },
-  { name: 'Sonnet', tagline: 'hard hat on — ready to build', xp: 60, pixel: 6, speed: 88, unlock: 'hardhat' },
-  { name: 'Opus', tagline: 'wizard hat — casts refactors', xp: 180, pixel: 7, speed: 98, unlock: 'wizard' },
-  { name: 'Mythos', tagline: 'crowned, confetti — it shipped', xp: 420, pixel: 8, speed: 112, unlock: 'party' },
+  { name: 'Haiku', tagline: 'small, quick, curious', xp: 0, pixel: 6, speed: 75 },
+  { name: 'Sonnet', tagline: 'grown into a builder', xp: 60, pixel: 6, speed: 88 },
+  { name: 'Opus', tagline: 'deep thinker, long context', xp: 180, pixel: 7, speed: 98 },
+  { name: 'Mythos', tagline: 'final form — now it just levels', xp: 420, pixel: 8, speed: 112 },
 ];
+
+/** xp needed to reach a level; level itself is unbounded. */
+export function xpForLevel(level: number): number {
+  return 5 * Math.max(0, level - 1) ** 2;
+}
+
+export function levelForXp(xp: number): number {
+  return Math.floor(Math.sqrt(Math.max(0, xp) / 5)) + 1;
+}
 
 export function stageForXp(xp: number): number {
   let s = 0;
@@ -31,17 +38,36 @@ export function nextStage(stage: number): StageDef | null {
   return STAGES[stage + 1] ?? null;
 }
 
-/** Outfits available at a given stage (always includes 'none'). */
-export function unlockedOutfits(stage: number): Outfit[] {
-  const list: Outfit[] = ['none'];
-  for (let i = 0; i <= stage && i < STAGES.length; i++) {
-    const u = STAGES[i]!.unlock;
-    if (u && !list.includes(u)) list.push(u);
-  }
-  return list;
+// ── wardrobe ─────────────────────────────────────────────────────
+// Outfits unlock purely by level, so progression keeps going long after
+// Mythos, the last body evolution.
+
+export interface Unlock {
+  outfit: Outfit;
+  level: number;
 }
 
-/** Level is a smoother progress number than stage — purely cosmetic. */
-export function levelForXp(xp: number): number {
-  return Math.floor(Math.sqrt(Math.max(0, xp) / 8)) + 1;
+export const UNLOCKS: readonly Unlock[] = [
+  { outfit: 'hardhat', level: 4 },
+  { outfit: 'wizard', level: 7 },
+  { outfit: 'party', level: 10 },
+  { outfit: 'headphones', level: 12 },
+  { outfit: 'beanie', level: 14 },
+  { outfit: 'shades', level: 16 },
+  { outfit: 'halo', level: 19 },
+  { outfit: 'antenna', level: 22 },
+  { outfit: 'cape', level: 26 },
+];
+
+export function unlockedOutfits(level: number): Outfit[] {
+  return ['none', ...UNLOCKS.filter((u) => level >= u.level).map((u) => u.outfit)];
+}
+
+/** Outfits earned by crossing from `from` to `to` (exclusive of `from`). */
+export function unlocksBetween(from: number, to: number): Unlock[] {
+  return UNLOCKS.filter((u) => u.level > from && u.level <= to);
+}
+
+export function nextUnlock(level: number): Unlock | null {
+  return UNLOCKS.find((u) => u.level > level) ?? null;
 }

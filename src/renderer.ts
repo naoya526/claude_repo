@@ -1,6 +1,23 @@
 import type { Pet, Food } from './pet';
 import type { Tool, Vec } from './types';
-import { COLORS, FOOD_SPRITES, OUTFITS, PALETTE, POSES, POSE_HEAD_OFFSET, eyeBoxes, legRowCount, legRuns, mapSize, type PixelMap } from './sprites';
+import {
+  BASKET,
+  BASKET_AT,
+  BASKET_SLOT,
+  BERRY_TIP,
+  BUSH,
+  COLORS,
+  FOOD_SPRITES,
+  OUTFITS,
+  PALETTE,
+  POSES,
+  POSE_HEAD_OFFSET,
+  eyeBoxes,
+  legRowCount,
+  legRuns,
+  mapSize,
+  type PixelMap,
+} from './sprites';
 import { Particles } from './particles';
 
 export interface Bubble {
@@ -123,6 +140,17 @@ export class Renderer {
     c.scale(1 + sq * 0.22, 1 - sq * 0.22);
     const ox = -w / 2;
     const oy = -h + bob;
+    const off = POSE_HEAD_OFFSET[pose];
+    /** sprite cell (may be fractional) → canvas x, honouring the flip */
+    const cx = (gx: number): number => ox + (flip ? cols - 1 - gx : gx) * px;
+    const cy = (gy: number): number => oy + (gy + off.y) * px;
+    const outfit = OUTFITS[pet.outfit];
+
+    for (const layer of outfit.layers) {
+      if (!layer.behind) continue;
+      if (layer.poses && !layer.poses.includes(pose)) continue;
+      this.drawMap(layer.map, ox, oy, px, { tint, flipCols }, layer.x + off.x, layer.y + off.y);
+    }
 
     const skipLegs: 0 | 1 | null = pet.moving ? ((Math.floor(pet.walkPhase) % 2) as 0 | 1) : null;
     this.drawMap(map, ox, oy, px, { tint, skipLegs, flipCols });
@@ -173,12 +201,33 @@ export class Renderer {
       }
     }
 
+    // the foraging basket, slung on the trailing side, with its berries showing
+    if (pet.showBasket && !tint) {
+      this.drawMap(BASKET, ox, oy, px, { flipCols }, BASKET_AT.x + off.x, BASKET_AT.y + off.y);
+      c.fillStyle = COLORS.berry;
+      for (let i = 0; i < Math.min(pet.basket, 4); i++) c.fillRect(cx(BASKET_AT.x + i), cy(BASKET_AT.y + 2), px, px);
+    }
+
     // outfit overlays (idle-map coordinates, shifted per pose)
-    const outfit = OUTFITS[pet.outfit];
-    const off = POSE_HEAD_OFFSET[pose];
     for (const layer of outfit.layers) {
+      if (layer.behind) continue;
       if (layer.poses && !layer.poses.includes(pose)) continue;
       this.drawMap(layer.map, ox, oy, px, { tint, flipCols }, layer.x + off.x, layer.y + off.y);
+    }
+
+    // the berry: held at the fingertip, then lobbed over the head into the basket
+    const p = pet.pickProgress();
+    if (p && p.phase !== 'settle') {
+      let gx = BERRY_TIP.x;
+      let gy = BERRY_TIP.y;
+      if (p.phase === 'toss') {
+        gx = BERRY_TIP.x + (BASKET_SLOT.x - BERRY_TIP.x) * p.t;
+        gy = BERRY_TIP.y + (BASKET_SLOT.y - BERRY_TIP.y) * p.t - Math.sin(Math.PI * p.t) * 3.5;
+      }
+      c.fillStyle = COLORS.berry;
+      c.fillRect(Math.round(cx(gx)), Math.round(cy(gy)), px, px);
+      c.fillStyle = COLORS.berryLight;
+      c.fillRect(Math.round(cx(gx)), Math.round(cy(gy)), px / 2, px / 2);
     }
 
     // caffeine sparkle
@@ -188,6 +237,24 @@ export class Renderer {
     }
 
     c.restore();
+  }
+
+  /** The raspberry bush the pet forages from. Returns its canopy box in canvas px. */
+  drawBush(at: Vec, now: number): { x: number; y: number; w: number; h: number } {
+    const px = 5;
+    const { cols, rows } = mapSize(BUSH);
+    const w = cols * px;
+    const h = rows * px;
+    const x = Math.round(at.x - w / 2);
+    const y = Math.round(at.y - h);
+    const c = this.ctx;
+    c.fillStyle = 'rgba(0,0,0,0.3)';
+    c.beginPath();
+    c.ellipse(at.x, at.y, w * 0.4, 4, 0, 0, Math.PI * 2);
+    c.fill();
+    const sway = Math.sin(now / 900) > 0 ? 0 : px;
+    this.drawMap(BUSH, x + sway, y, px);
+    return { x, y, w, h: h - px * 2 };
   }
 
   drawFood(f: Food, now: number): void {

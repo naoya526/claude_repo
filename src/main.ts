@@ -1,5 +1,5 @@
 import './style.css';
-import { Pet, type Food, type World } from './pet';
+import { Pet, type World } from './pet';
 import { Renderer, type Bubble } from './renderer';
 import { Particles } from './particles';
 import { UI } from './ui';
@@ -7,13 +7,13 @@ import { runCommand } from './commands';
 import { clearSave, loadSave, writeSave } from './storage';
 import { FOOD_KINDS, type FoodKind, type Tool, type Vec } from './types';
 import { FOODS } from './logic';
-import { STAGES } from './evolution';
-import { FOOD_SPRITES, OUTFITS, POSES, validateMap } from './sprites';
+import { STAGES, levelForXp } from './evolution';
+import { BUSH, FOOD_SPRITES, OUTFITS, POSES, mapSize, validateMap } from './sprites';
 
 // ── sanity check the pixel art in dev ────────────────────────────
 if (import.meta.env.DEV) {
   const layers = Object.values(OUTFITS).flatMap((o) => o.layers.map((l) => l.map));
-  for (const m of [...Object.values(POSES), ...Object.values(FOOD_SPRITES), ...layers]) {
+  for (const m of [...Object.values(POSES), ...Object.values(FOOD_SPRITES), ...layers, BUSH]) {
     const err = validateMap(m);
     if (err) console.error('bad sprite:', err, m);
   }
@@ -38,6 +38,33 @@ let lastCrumb = 0;
 let lastConfetti = 0;
 const startedAt = now();
 
+// ── the raspberry bush ───────────────────────────────────────────
+// It ripens a berry every so often; the pet forages on its own, which is the
+// idle activity that keeps it fed between snacks you drop yourself.
+
+const BUSH_PX = 5;
+const BUSH_SIZE = mapSize(BUSH);
+const MAX_ON_BUSH = 3;
+let bushAt: Vec = { x: 0, y: 0 };
+let ripenAt = now() + 12_000;
+
+function placeBush(): void {
+  const { w, h } = world.bounds;
+  bushAt = { x: Math.max(70, Math.min(w - 50, w * 0.86)), y: Math.max(130, h * 0.34) };
+}
+
+function berriesOnBush(): number {
+  return world.foods.filter((f) => f.kind === 'berry').length;
+}
+
+function ripenBerry(): void {
+  const canopyTop = bushAt.y - BUSH_SIZE.rows * BUSH_PX;
+  spawnFood('berry', {
+    x: bushAt.x + (Math.random() - 0.5) * BUSH_SIZE.cols * BUSH_PX * 0.7,
+    y: canopyTop + 12 + Math.random() * 26,
+  }, true);
+}
+
 // ── helpers ──────────────────────────────────────────────────────
 
 function setTool(t: Tool): void {
@@ -45,7 +72,7 @@ function setTool(t: Tool): void {
   ui.setTool(t);
 }
 
-function spawnFood(kind: FoodKind, at?: Vec): boolean {
+function spawnFood(kind: FoodKind, at?: Vec, quiet = false): boolean {
   if (world.foods.length >= 6) return false;
   const b = world.bounds;
   const p: Vec = at ?? {
@@ -54,10 +81,11 @@ function spawnFood(kind: FoodKind, at?: Vec): boolean {
   };
   p.x = Math.max(16, Math.min(b.w - 16, p.x));
   p.y = Math.max(36, Math.min(b.h - 8, p.y));
-  const f: Food = { id: foodId++, kind, x: p.x, y: p.y, born: now() };
-  world.foods.push(f);
-  ui.log(`Drop(${FOODS[kind].label}) at (${Math.round(p.x)}, ${Math.round(p.y)})`, 'act');
-  if (pet.sleeping) ui.log('…but claude is asleep. poke to wake', 'sub');
+  world.foods.push({ id: foodId++, kind, x: p.x, y: p.y, born: now() });
+  if (!quiet) {
+    ui.log(`Drop(${FOODS[kind].label}) at (${Math.round(p.x)}, ${Math.round(p.y)})`, 'act');
+    if (pet.sleeping) ui.log('…but claude is asleep. poke to wake', 'sub');
+  }
   ui.hideHint();
   return true;
 }
@@ -72,8 +100,10 @@ function resetAll(): void {
   world.foods.length = 0;
   pet.reset(now());
   placeInitially();
+  ripenAt = now() + 12_000;
   ui.clearLog();
   ui.log('pet reset — a fresh Haiku hatches', 'sys');
+  ui.updateCounts(pet.fed);
   doSave();
 }
 
@@ -101,15 +131,27 @@ function drainEvents(): void {
         bubble = { text: e.text, until: now() + (e.ms ?? 2400) };
         break;
       case 'poked':
-        particles.spawn('heart', pet.head.x + (Math.random() - 0.5) * 20, pet.head.y - 4, 3);
+        particles.spawn('heart', pet.top.x + (Math.random() - 0.5) * 20, pet.top.y - 4, 3);
         break;
       case 'ate': {
         const f = FOODS[e.food.kind];
-        ui.log(`Eat(${f.label})`, 'act');
-        ui.log(e.overfed ? `overfed! −joy, half xp` : `+${f.hunger} hunger · +${f.xp} xp · ${f.effect}`, 'sub');
         ui.updateCounts(pet.fed);
+        if (f.picked) break; // the 'picked' event narrates these
+        ui.log(`Eat(${f.label})`, 'act');
+        ui.log(e.overfed ? 'overfed! −joy, half xp' : `+${f.hunger} hunger · +${f.xp} xp · ${f.effect}`, 'sub');
         break;
       }
+      case 'picked': {
+        const f = FOODS[e.food.kind];
+        ui.log(`Pick(${f.label}) → basket ${e.basket}/5`, 'act');
+        ui.log(`+${f.hunger} hunger · +${f.xp} xp`, 'sub');
+        particles.spawn('crumb', pet.center.x, pet.center.y, 2);
+        break;
+      }
+      case 'basket-full':
+        ui.log(`Basket full — +${e.bonus} bonus xp`, 'ok');
+        particles.spawn('heart', pet.top.x, pet.top.y, 4);
+        break;
       case 'evolve-start':
         ui.log('Compacting context…', 'sys');
         break;
@@ -118,12 +160,19 @@ function drainEvents(): void {
         ui.log(`Evolved: ${STAGES[e.from]?.name} → ${st?.name}`, 'sys');
         ui.log(st?.tagline ?? '', 'sub');
         particles.spawn('spark', pet.center.x, pet.center.y, 40);
-        particles.spawn('star', pet.head.x, pet.head.y, 6);
+        particles.spawn('star', pet.top.x, pet.top.y, 6);
         doSave();
         break;
       }
+      case 'levelup':
+        ui.log(`Level up → lv ${e.level}`, 'sys');
+        particles.spawn('star', pet.top.x, pet.top.y, 5);
+        break;
       case 'unlocked':
-        ui.log(`Unlocked outfit: ${OUTFITS[e.outfit].label} — /wear <name> to change`, 'ok');
+        ui.log(`Unlocked outfit: ${OUTFITS[e.outfit].label} (lv ${e.level})`, 'ok');
+        ui.log(`now wearing it — /outfits to see the wardrobe`, 'sub');
+        particles.spawn('confetti', pet.top.x + (Math.random() - 0.5) * 60, pet.top.y - 40, 14);
+        doSave();
         break;
       case 'slept':
         ui.log(`${pet.name} fell asleep`, 'act');
@@ -193,7 +242,7 @@ ui.onCommand = (text) =>
     pet,
     ui,
     now,
-    spawnFood,
+    spawnFood: (kind, at) => spawnFood(kind, at),
     reset: resetAll,
     save: doSave,
   });
@@ -203,6 +252,7 @@ ui.onCommand = (text) =>
 function onResize(): void {
   renderer.resize();
   world.bounds = { w: renderer.w, h: renderer.h };
+  placeBush();
   if (!placed && renderer.w > 1) {
     placeInitially();
     placed = true;
@@ -215,15 +265,16 @@ onResize();
 
 ui.setTool('cursor');
 ui.updateCounts(pet.fed);
-ui.log(`claude-pet v0.1.0 · session started`, 'sys');
+ui.log(`claude-pet v0.2.0 · session started`, 'sys');
 if (save) {
   const away = Date.now() - save.savedAt;
-  ui.log(`Loaded ${pet.name} (${pet.def.name}, stage ${pet.stage + 1}) from localStorage`, 'act');
-  if (away > 60_000) ui.log(`away for ${Math.round(away / 60_000)} min — stats drifted a little`, 'sub');
+  ui.log(`Loaded ${pet.name} (${pet.def.name}, lv ${levelForXp(pet.stats.xp)}) from localStorage`, 'act');
+  if (away > 60_000) ui.log(`away for ${Math.round(away / 60_000)} min — it got hungry`, 'sub');
   bubble = { text: 'welcome back', until: now() + 2600 };
 } else {
   ui.log('No save found — a Haiku hatches', 'act');
   ui.log('poke it, move your mouse, drop food. /help for commands', 'sub');
+  ui.log('it forages the raspberry bush on its own', 'sub');
   bubble = { text: "hi! I'm claude ✻", until: now() + 3200 };
 }
 
@@ -236,13 +287,18 @@ function frame(): void {
   last = t;
   world.now = t;
 
+  if (t >= ripenAt) {
+    ripenAt = t + 40_000 + Math.random() * 30_000;
+    if (berriesOnBush() < MAX_ON_BUSH) ripenBerry();
+  }
+
   pet.update(dt, world);
   drainEvents();
   particles.update(dt);
 
   if (pet.sleeping && t - lastZ > 900) {
     lastZ = t;
-    particles.spawn('z', pet.head.x + pet.size.w * 0.3, pet.head.y + 4);
+    particles.spawn('z', pet.top.x + pet.size.w * 0.3, pet.top.y + 4);
   }
   if (pet.eatTimer > 0 && t - lastCrumb > 140) {
     lastCrumb = t;
@@ -252,9 +308,10 @@ function frame(): void {
     lastConfetti = t;
     particles.spawn('confetti', pet.top.x + (Math.random() - 0.5) * pet.size.w * 1.6, pet.top.y - 30 - Math.random() * 20, 1);
   }
-  if (pet.mood === 'excited' && Math.random() < 0.15) particles.spawn('star', pet.head.x + (Math.random() - 0.5) * pet.size.w, pet.head.y, 1);
+  if (pet.mood === 'excited' && Math.random() < 0.15) particles.spawn('star', pet.top.x + (Math.random() - 0.5) * pet.size.w, pet.top.y, 1);
 
   renderer.begin();
+  renderer.drawBush(bushAt, t);
   for (const f of world.foods) renderer.drawFood(f, t);
   renderer.drawPet(pet, world.cursor, t);
   renderer.drawSleepDim(pet);
@@ -266,7 +323,7 @@ function frame(): void {
   if (Math.floor(t / 1000) !== Math.floor((t - dt * 1000) / 1000)) {
     ui.setStatus(
       `✻ <b>${pet.name}</b> · ${pet.mood}${pet.caffeinated ? ' · ☕' : ''}`,
-      `snacks ${world.foods.length} · uptime ${fmtUptime(t - startedAt)} · autosave ✓`,
+      `snacks ${world.foods.length} · basket ${pet.basket}/5 · uptime ${fmtUptime(t - startedAt)} · autosave ✓`,
     );
   }
 
