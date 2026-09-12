@@ -17,8 +17,8 @@ export interface FoodDef {
 export const FOODS: Readonly<Record<FoodKind, FoodDef>> = {
   token: { label: 'token', hunger: 22, energy: 0, happiness: 4, xp: 10, line: 'nom nom nom', effect: 'context refilled' },
   coffee: { label: 'coffee', hunger: 4, energy: 35, happiness: 6, xp: 8, line: 'caffeinated!', effect: 'speed boost for 12s' },
-  bug: { label: 'bug', hunger: 8, energy: -4, happiness: 22, xp: 15, line: 'bug fixed ✓', effect: 'very satisfying' },
-  commit: { label: 'commit', hunger: 10, energy: 5, happiness: 12, xp: 30, line: 'committed ✓', effect: 'big xp' },
+  bug: { label: 'bug', hunger: -8, energy: -4, happiness: 22, xp: 15, line: 'bug fixed ✓', effect: 'very satisfying' },
+  commit: { label: 'commit', hunger: -10, energy: -5, happiness: 12, xp: 30, line: 'committed ✓', effect: 'big xp' },
 };
 
 export const DEFAULT_STATS: Stats = { hunger: 70, energy: 80, happiness: 70, xp: 0 };
