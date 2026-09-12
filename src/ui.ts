@@ -122,7 +122,7 @@ export class UI {
       pet.mood === 'sleeping' ? 'zzz' : pet.mood === 'eating' ? 'nom' : pet.mood === 'evolving' ? '✻ ✻ ✻' : pet.mood === 'sad' ? ':(' : pet.mood === 'happy' || pet.mood === 'excited' ? ':)' : ':|';
     const low = (v: number) => (v < 25 ? ' low' : '');
     const html =
-      `<span class="name">${esc(pet.name)}</span> <span class="k">·</span> ${esc(stage.name)} <span class="k">· lv</span> ${lvl} <span class="k">· stage</span> ${pet.stage + 1}<span class="k">/${STAGES.length}</span>\n` +
+      `<span class="name">${esc(pet.name)}</span> <span class="k">·</span> ${esc(stage.name)} <span class="k">· lv</span> ${lvl} <span class="k">· stage</span> ${pet.stage + 1}<span class="k">/${STAGES.length}</span>${pet.outfit !== 'none' ? ` <span class="k">·</span> ${esc(pet.outfit)}` : ''}\n` +
       `<span class="k">mood    </span> ${esc(moodGlyph)}${pet.caffeinated ? ' <span class="bar xp">☕</span>' : ''}\n` +
       `<span class="k">hunger  </span> <span class="bar${low(s.hunger)}">${bar(s.hunger)}</span> ${String(Math.round(s.hunger)).padStart(3)}%\n` +
       `<span class="k">energy  </span> <span class="bar${low(s.energy)}">${bar(s.energy)}</span> ${String(Math.round(s.energy)).padStart(3)}%\n` +

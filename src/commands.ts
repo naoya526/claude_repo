@@ -3,6 +3,7 @@ import type { UI } from './ui';
 import { FOOD_KINDS, type FoodKind, type Vec } from './types';
 import { FOODS } from './logic';
 import { STAGES, nextStage } from './evolution';
+import { OUTFITS } from './sprites';
 
 export interface CommandContext {
   pet: Pet;
@@ -18,6 +19,7 @@ const HELP = [
   '/pet           poke it',
   '/status        print stats',
   '/name <name>   rename',
+  '/wear <outfit> dress up (unlocked by evolving)',
   '/sleep /wake   toggle nap',
   '/stages        evolution chart',
   '/save /reset /clear',
@@ -64,7 +66,7 @@ export function runCommand(raw: string, ctx: CommandContext): void {
     case 'status': {
       const s = pet.stats;
       const nx = nextStage(pet.stage);
-      ui.log(`${pet.name} · ${pet.def.name} (stage ${pet.stage + 1}/${STAGES.length}) · mood ${pet.mood}`, 'act');
+      ui.log(`${pet.name} · ${pet.def.name} (stage ${pet.stage + 1}/${STAGES.length}) · mood ${pet.mood} · wearing ${pet.outfit}`, 'act');
       ui.log(`hunger ${Math.round(s.hunger)}%  energy ${Math.round(s.energy)}%  joy ${Math.round(s.happiness)}%  xp ${s.xp}${nx ? ` / ${nx.xp}` : ''}`, 'sub');
       ui.log(`fed: ${FOOD_KINDS.map((k) => `${FOODS[k].label} ×${pet.fed[k]}`).join('  ')} · pokes ${pet.pokes}`, 'sub');
       break;
@@ -79,6 +81,25 @@ export function runCommand(raw: string, ctx: CommandContext): void {
       pet.rename(name);
       ui.log(`renamed to ${name}`, 'ok');
       pet.events.push({ type: 'bubble', text: `I'm ${name} now`, ms: 2000 });
+      break;
+    }
+
+    case 'wear':
+    case 'outfit': {
+      const list = pet.unlocked();
+      if (!arg) {
+        ui.log(`wearing: ${pet.outfit} · unlocked: ${list.join(', ')}`, 'sub');
+        break;
+      }
+      const name = arg.toLowerCase();
+      if (pet.wear(name)) {
+        ui.log(`now wearing ${OUTFITS[pet.outfit].label}`, 'ok');
+        pet.events.push({ type: 'bubble', text: name === 'none' ? 'back to basics' : `how do I look?`, ms: 2000 });
+      } else if (name in OUTFITS) {
+        ui.log(`${name} is locked — evolve to unlock it`, 'err');
+      } else {
+        ui.log(`unknown outfit "${arg}" — ${list.join(', ')}`, 'err');
+      }
       break;
     }
 

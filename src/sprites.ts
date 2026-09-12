@@ -2,22 +2,27 @@ import type { FoodKind } from './types';
 
 /**
  * Pixel maps. One string per row, one char per pixel.
- *   .  transparent        #  body (orange)     @  eye socket (body colour, eye drawn on top)
- *   +  dark accent        *  gold              c  cream
- *   g  green              k  coffee brown      w  white
+ *   .  transparent        #  body (orange)     @  eye (drawn by the renderer)
+ *   +  dark accent        *  gold              c  cream       w  white
+ *   g  green              k  coffee brown      r  grey        d  dark grey
+ *   y  hard-hat yellow    o  hard-hat emblem   p  wizard purple
  */
 export type PixelMap = readonly string[];
 
 export const COLORS = {
   bg: '#141413',
   body: '#D97757',
-  eye: '#2A1B14',
-  eyeShine: 'rgba(244,243,238,0.55)',
+  eye: '#1E1512',
   cream: '#F4F3EE',
   gold: '#F2C14E',
   green: '#5FB57A',
   coffee: '#5C3B2E',
   white: '#FFFFFF',
+  grey: '#9A9A9A',
+  darkGrey: '#5A5A5A',
+  hatYellow: '#E9B949',
+  hatEmblem: '#C77D2E',
+  purple: '#5A4A9C',
   grid: 'rgba(244,243,238,0.055)',
 } as const;
 
@@ -27,108 +32,129 @@ export const PALETTE: Readonly<Record<string, string>> = {
   '+': COLORS.eye,
   '*': COLORS.gold,
   c: COLORS.cream,
+  w: COLORS.white,
   g: COLORS.green,
   k: COLORS.coffee,
-  w: COLORS.white,
+  r: COLORS.grey,
+  d: COLORS.darkGrey,
+  y: COLORS.hatYellow,
+  o: COLORS.hatEmblem,
+  p: COLORS.purple,
 };
 
-// ── Stage 0 · Haiku ─────────────────────────────────── 14 × 8
-const STAGE_0: PixelMap = [
-  '..##########..',
-  '..##########..',
-  '..##@@##@@##..',
-  '####@@##@@####',
-  '##############',
-  '..##########..',
-  '..##########..',
-  '..#..#..#..#..',
+// ── the mascot ───────────────────────────────────────────────────
+// All poses share a 16 × 9 canvas so switching poses never shifts the body.
+// Body: cols 2..12, rows 0..6 (top corners cut). Arms: col 1 / col 13. Legs: 4 × 1 px.
+
+export type Pose = 'idle' | 'armup' | 'crawl';
+
+const IDLE: PixelMap = [
+  '...#########....',
+  '..###########...',
+  '..##@#####@##...',
+  '.#############..',
+  '.#############..',
+  '..###########...',
+  '..###########...',
+  '....#.#.#.#.....',
+  '....#.#.#.#.....',
 ];
 
-// ── Stage 1 · Sonnet (sprouts a ✻ antenna) ─────────── 16 × 11
-const STAGE_1: PixelMap = [
-  '.......*........',
-  '......***.......',
-  '.......#........',
-  '...##########...',
-  '...##########...',
-  '...##@@##@@##...',
-  '#####@@##@@#####',
-  '################',
-  '...##########...',
-  '...##########...',
-  '...#..#..#..#...',
+/** right arm raised diagonally — waving / celebrating */
+const ARMUP: PixelMap = [
+  '...#########....',
+  '..###########..#',
+  '..##@#####@##.#.',
+  '.#############..',
+  '.############...',
+  '..###########...',
+  '..###########...',
+  '....#.#.#.#.....',
+  '....#.#.#.#.....',
 ];
 
-// ── Stage 2 · Opus (glasses) ────────────────────────── 18 × 12
-const STAGE_2: PixelMap = [
-  '........*.........',
-  '.......***........',
-  '........#.........',
-  '...############...',
-  '...############...',
-  '...############...',
-  '...#+@@+##+@@+#...',
-  '####+@@+##+@@+####',
-  '##################',
-  '...############...',
-  '...############...',
-  '...#...#..#...#...',
+/** crouched, front arm reaching, grey cable-tail behind — chasing the mouse (faces right) */
+const CRAWL: PixelMap = [
+  '................',
+  '...#########....',
+  '..###########...',
+  '..##@#####@##...',
+  'r##############.',
+  'r##############.',
+  'r.###########...',
+  '.r###########...',
+  '....#.#.#.#.....',
 ];
 
-// ── Stage 3 · Mythos (crown) ────────────────────────── 20 × 10
-const STAGE_3: PixelMap = [
-  '....*.....*.....*...',
-  '....************....',
-  '...##############...',
-  '...##############...',
-  '...###@@@###@@@##...',
-  '######@@@###@@@#####',
-  '####################',
-  '...##############...',
-  '...##############...',
-  '...#...#....#...#...',
-];
+export const POSES: Readonly<Record<Pose, PixelMap>> = { idle: IDLE, armup: ARMUP, crawl: CRAWL };
 
-export const STAGE_SPRITES: readonly PixelMap[] = [STAGE_0, STAGE_1, STAGE_2, STAGE_3];
+/** where the head's top-left pixel sits per pose, relative to the idle pose */
+export const POSE_HEAD_OFFSET: Readonly<Record<Pose, { x: number; y: number }>> = {
+  idle: { x: 0, y: 0 },
+  armup: { x: 0, y: 0 },
+  crawl: { x: 0, y: 1 },
+};
+
+// ── outfits (overlays drawn after the body, in idle-map coordinates) ─────────
+
+export type Outfit = 'none' | 'hardhat' | 'wizard' | 'party';
+export const OUTFIT_NAMES: readonly Outfit[] = ['none', 'hardhat', 'wizard', 'party'];
+
+export interface OutfitLayer {
+  map: PixelMap;
+  /** top-left in idle-map coordinates (negative = above the head) */
+  x: number;
+  y: number;
+  /** only draw for these poses (default: all) */
+  poses?: readonly Pose[];
+}
+
+export interface OutfitDef {
+  label: string;
+  /** rows the outfit extends above the head — used for bubbles and bounds */
+  above: number;
+  layers: readonly OutfitLayer[];
+}
+
+const HARD_HAT: PixelMap = ['..yyyyyyy..', '.yyyyoyyyy.', 'yyyyyyyyyyy'];
+const WRENCH: PixelMap = ['r.r', 'rrr', '.r.', '.r.', '.r.'];
+const WIZARD_HAT: PixelMap = [
+  '.....p.....',
+  '....pp.....',
+  '....pwp....',
+  '...pppp....',
+  '...pwppp...',
+  '..ppppwpp..',
+  '.pppwppppp.',
+  'ppppppppppp',
+];
+const CROWN: PixelMap = ['*..*..*', '*.***.*', '*******'];
+
+export const OUTFITS: Readonly<Record<Outfit, OutfitDef>> = {
+  none: { label: 'none', above: 0, layers: [] },
+  hardhat: {
+    label: 'hard hat & wrench',
+    above: 4,
+    layers: [
+      { map: HARD_HAT, x: 2, y: -2 },
+      { map: WRENCH, x: 14, y: 0, poses: ['idle', 'crawl'] },
+      { map: WRENCH, x: 14, y: -4, poses: ['armup'] },
+    ],
+  },
+  wizard: { label: 'wizard hat', above: 7, layers: [{ map: WIZARD_HAT, x: 2, y: -7 }] },
+  party: { label: 'crown & confetti', above: 3, layers: [{ map: CROWN, x: 5, y: -3 }] },
+};
+
+// ── food ─────────────────────────────────────────────────────────
 
 export const FOOD_SPRITES: Readonly<Record<FoodKind, PixelMap>> = {
-  token: [
-    '.*****.',
-    '*******',
-    '**ccc**',
-    '**c****',
-    '**ccc**',
-    '*******',
-    '.*****.',
-  ],
-  coffee: [
-    '.c.c...',
-    '..c.c..',
-    'ccccc..',
-    'ckkkccc',
-    'ckkkc.c',
-    'ckkkccc',
-    '.ccc...',
-  ],
-  bug: [
-    'g.....g',
-    '.g...g.',
-    '..ggg..',
-    '.ggggg.',
-    'g.g+g.g',
-    '.ggggg.',
-    'g.g.g.g',
-  ],
-  commit: [
-    '...c...',
-    '...c...',
-    '..ccc..',
-    '.cc*cc.',
-    '..ccc..',
-    '...c...',
-    '...c...',
-  ],
+  token: ['.*****.', '*******', '**ccc**', '**c****', '**ccc**', '*******', '.*****.'],
+  coffee: ['.c.c...', '..c.c..', 'ccccc..', 'ckkkccc', 'ckkkc.c', 'ckkkccc', '.ccc...'],
+  bug: ['g.....g', '.g...g.', '..ggg..', '.ggggg.', 'g.g+g.g', '.ggggg.', 'g.g.g.g'],
+  commit: ['...c...', '...c...', '..ccc..', '.cc*cc.', '..ccc..', '...c...', '...c...'],
 };
+
+// ── helpers ──────────────────────────────────────────────────────
 
 export interface Box {
   x: number;
@@ -155,7 +181,7 @@ export function validateMap(map: PixelMap): string | null {
   return null;
 }
 
-/** Bounding boxes of the '@' eye sockets, left eye first. */
+/** Bounding boxes of the '@' eye pixels, left eye first. */
 export function eyeBoxes(map: PixelMap): Box[] {
   const { cols } = mapSize(map);
   const mid = cols / 2;
@@ -193,4 +219,12 @@ export function legRuns(map: PixelMap): Array<[number, number]> {
     }
   }
   return runs;
+}
+
+/** How many rows from the bottom are leg rows (identical to the last row). */
+export function legRowCount(map: PixelMap): number {
+  const last = map[map.length - 1];
+  let n = 0;
+  for (let i = map.length - 1; i >= 0 && map[i] === last; i--) n++;
+  return n;
 }

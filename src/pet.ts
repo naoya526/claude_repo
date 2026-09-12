@@ -1,7 +1,7 @@
 import type { EyeStyle, FoodKind, Mood, SaveData, Stats, Vec } from './types';
-import { STAGES, stageForXp, type StageDef } from './evolution';
+import { STAGES, stageForXp, unlockedOutfits, type StageDef } from './evolution';
 import { DEFAULT_STATS, FOODS, applyFood, clamp, decay, moodFromStats, offlineDecay } from './logic';
-import { mapSize } from './sprites';
+import { OUTFITS, OUTFIT_NAMES, POSES, mapSize, type Outfit, type Pose } from './sprites';
 
 export interface Food {
   id: number;
@@ -26,6 +26,7 @@ export type PetEvent =
   | { type: 'ate'; food: Food; overfed: boolean }
   | { type: 'evolve-start'; to: number }
   | { type: 'evolved'; from: number; to: number }
+  | { type: 'unlocked'; outfit: Outfit }
   | { type: 'poked' }
   | { type: 'slept' }
   | { type: 'woke' };
@@ -52,10 +53,13 @@ export class Pet {
   name: string;
   stats: Stats;
   stage: number;
+  outfit: Outfit = 'none';
   fed: Record<FoodKind, number>;
   pokes: number;
 
   mood: Mood = 'idle';
+  /** true while walking after the cursor — switches to the crawl pose */
+  chasing = false;
   private moodUntil = 0;
 
   /** animation clock, seconds */
@@ -73,7 +77,10 @@ export class Pet {
   evolveTimer = 0;
   private evolveTo = -1;
 
+  /** explicit click-to-walk target */
   target: Vec | null = null;
+  /** random stroll target — abandoned as soon as food, a click or the cursor asks for attention */
+  private wanderTarget: Vec | null = null;
   private wanderAt = 0;
   lastInteraction = 0;
   caffeineUntil = 0;
@@ -85,6 +92,8 @@ export class Pet {
     this.name = save?.name ?? 'claude';
     this.stats = save ? offlineDecay(save.stats, Date.now() - save.savedAt) : { ...DEFAULT_STATS };
     this.stage = save ? clamp(save.stage, 0, STAGES.length - 1) : 0;
+    const savedOutfit = save?.outfit as Outfit | undefined;
+    this.outfit = savedOutfit && unlockedOutfits(this.stage).includes(savedOutfit) ? savedOutfit : (STAGES[this.stage]?.unlock ?? 'none');
     this.fed = save?.fed ?? { token: 0, coffee: 0, bug: 0, commit: 0 };
     this.pokes = save?.pokes ?? 0;
     this.lastInteraction = now;
@@ -98,14 +107,56 @@ export class Pet {
     return STAGES[this.stage] ?? STAGES[0]!;
   }
 
-  /** Sprite size on canvas in px. */
+  /** Sprite size on canvas in px (all poses share one canvas). */
   get size(): { w: number; h: number } {
-    const { cols, rows } = mapSize(this.def.sprite);
+    const { cols, rows } = mapSize(POSES.idle);
     return { w: cols * this.def.pixel, h: rows * this.def.pixel };
   }
 
   get head(): Vec {
     return { x: this.x, y: this.y - this.size.h + this.jump };
+  }
+
+  /** topmost point including the outfit (hat) */
+  get top(): Vec {
+    return { x: this.x, y: this.head.y - OUTFITS[this.outfit].above * this.def.pixel };
+  }
+
+  /** lowest allowed feet y: leaves room for the sprite plus its hat */
+  get minFeetY(): number {
+    return this.size.h + OUTFITS[this.outfit].above * this.def.pixel + 6;
+  }
+
+  pose(): Pose {
+    if (this.evolveTimer > 0 || this.mood === 'excited' || this.squish > 0.05 || this.jump < 0) return 'armup';
+    if (this.chasing && this.moving) return 'crawl';
+    return 'idle';
+  }
+
+  unlocked(): Outfit[] {
+    return unlockedOutfits(this.stage);
+  }
+
+  /** Change outfit; false when unknown or not yet unlocked. */
+  wear(outfit: string): boolean {
+    if (!OUTFIT_NAMES.includes(outfit as Outfit) || !this.unlocked().includes(outfit as Outfit)) return false;
+    this.outfit = outfit as Outfit;
+    return true;
+  }
+
+  /** Clamp a feet position into the area this pet can actually stand on. */
+  clampFeet(p: Vec, bounds: { w: number; h: number }): Vec {
+    const { w } = this.size;
+    return {
+      x: clamp(p.x, w / 2 + 4, Math.max(w / 2 + 4, bounds.w - w / 2 - 4)),
+      y: clamp(p.y, this.minFeetY, Math.max(this.minFeetY, bounds.h - 12)),
+    };
+  }
+
+  /** Can the pet grab something at p from where it stands? (its body + hat, padded) */
+  canReach(p: Vec, pad = 10): boolean {
+    const { w, h } = this.size;
+    return Math.abs(p.x - this.x) <= w / 2 + pad && p.y <= this.y + pad && p.y >= this.y - h - OUTFITS[this.outfit].above * this.def.pixel - pad;
   }
 
   get center(): Vec {
@@ -174,10 +225,10 @@ export class Pet {
     this.say(pick(LINES.poke), 1400);
   }
 
-  setTarget(p: Vec, now: number): void {
+  setTarget(p: Vec, now: number, bounds: { w: number; h: number }): void {
     this.lastInteraction = now;
     if (this.sleeping) return;
-    this.target = { ...p };
+    this.target = this.clampFeet(p, bounds);
   }
 
   sleep(_now: number): void {
@@ -185,6 +236,7 @@ export class Pet {
     this.mood = 'sleeping';
     this.moodUntil = 0;
     this.target = null;
+    this.wanderTarget = null;
     this.moving = false;
     this.emit({ type: 'slept' });
     this.say(pick(LINES.sleep), 1800);
@@ -253,23 +305,31 @@ export class Pet {
     // moveToward converges onto `stop` exactly, so arrival checks need a little slack
     const ARRIVE = 1.5;
 
+    this.chasing = false;
     const food = this.nearestFood(w.foods);
     if (food) {
-      dest = food;
-      stop = 10;
-      if (dist(me, food) <= stop + ARRIVE) {
+      // food may lie where the feet can't go (near the top edge); walk to the closest
+      // standable spot and grab it once it is within the body's reach box
+      if (this.canReach(food)) {
         this.startEat(food, w, now);
         return;
       }
+      dest = this.clampFeet(food, w.bounds);
+      stop = 4;
     } else if (this.target) {
       if (dist(me, this.target) <= stop + ARRIVE) this.target = null;
       else dest = this.target;
     } else if (w.cursor && now - w.cursorMovedAt < 2500) {
-      const d = dist(me, w.cursor);
-      if (d > 96) {
-        dest = w.cursor;
+      this.wanderTarget = null;
+      const goal = this.clampFeet(w.cursor, w.bounds);
+      if (dist(me, goal) > 96) {
+        dest = goal;
         stop = 84;
+        this.chasing = true;
       }
+    } else if (this.wanderTarget) {
+      if (dist(me, this.wanderTarget) <= stop + ARRIVE) this.wanderTarget = null;
+      else dest = this.wanderTarget;
     }
 
     if (!dest && !this.target) this.idleBehaviour(now, w);
@@ -315,9 +375,9 @@ export class Pet {
   }
 
   private clampToBounds(b: { w: number; h: number }): void {
-    const { w, h } = this.size;
-    this.x = clamp(this.x, w / 2 + 4, Math.max(w / 2 + 4, b.w - w / 2 - 4));
-    this.y = clamp(this.y, h + 40, Math.max(h + 40, b.h - 12));
+    const p = this.clampFeet(this, b);
+    this.x = p.x;
+    this.y = p.y;
   }
 
   private idleBehaviour(now: number, w: World): void {
@@ -334,11 +394,7 @@ export class Pet {
       if (Math.random() < 0.65) {
         const r = 60 + Math.random() * 120;
         const a = Math.random() * Math.PI * 2;
-        const { w: sw, h: sh } = this.size;
-        this.target = {
-          x: clamp(this.x + Math.cos(a) * r, sw / 2 + 8, w.bounds.w - sw / 2 - 8),
-          y: clamp(this.y + Math.sin(a) * r * 0.6, sh + 44, w.bounds.h - 16),
-        };
+        this.wanderTarget = this.clampFeet({ x: this.x + Math.cos(a) * r, y: this.y + Math.sin(a) * r * 0.6 }, w.bounds);
       }
     }
   }
@@ -360,6 +416,7 @@ export class Pet {
     this.mood = 'eating';
     this.moodUntil = 0;
     this.target = null;
+    this.wanderTarget = null;
     this.lastInteraction = now;
     this.facing = food.x >= this.x ? 1 : -1;
     this.say(FOODS[food.kind].line, 1600);
@@ -400,6 +457,11 @@ export class Pet {
     this.jumpV = -380;
     this.setMood('excited', 4000, now);
     this.emit({ type: 'evolved', from, to: this.stage });
+    const unlock = this.def.unlock;
+    if (unlock) {
+      this.outfit = unlock;
+      this.emit({ type: 'unlocked', outfit: unlock });
+    }
     this.say(`✻ evolved → ${this.def.name}!`, 3200);
   }
 
@@ -411,6 +473,7 @@ export class Pet {
       name: this.name,
       stats: { ...this.stats },
       stage: this.stage,
+      outfit: this.outfit,
       fed: { ...this.fed },
       pokes: this.pokes,
       savedAt: Date.now(),
@@ -422,6 +485,8 @@ export class Pet {
     this.name = 'claude';
     this.stats = { ...DEFAULT_STATS };
     this.stage = 0;
+    this.outfit = 'none';
+    this.chasing = false;
     this.fed = { token: 0, coffee: 0, bug: 0, commit: 0 };
     this.pokes = 0;
     this.mood = 'idle';
@@ -431,6 +496,7 @@ export class Pet {
     this.evolveTimer = 0;
     this.evolveTo = -1;
     this.target = null;
+    this.wanderTarget = null;
     this.caffeineUntil = 0;
     this.lastInteraction = now;
     this.say('hello, world', 2000);

@@ -1,6 +1,6 @@
 import type { Pet, Food } from './pet';
 import type { Tool, Vec } from './types';
-import { COLORS, FOOD_SPRITES, PALETTE, eyeBoxes, legRuns, mapSize, type PixelMap } from './sprites';
+import { COLORS, FOOD_SPRITES, OUTFITS, PALETTE, POSES, POSE_HEAD_OFFSET, eyeBoxes, legRowCount, legRuns, mapSize, type PixelMap } from './sprites';
 import { Particles } from './particles';
 
 export interface Bubble {
@@ -9,7 +9,7 @@ export interface Bubble {
 }
 
 const eyeCache = new WeakMap<PixelMap, ReturnType<typeof eyeBoxes>>();
-const legCache = new WeakMap<PixelMap, ReturnType<typeof legRuns>>();
+const legCache = new WeakMap<PixelMap, { runs: ReturnType<typeof legRuns>; rows: number }>();
 const eyesOf = (m: PixelMap) => {
   let v = eyeCache.get(m);
   if (!v) eyeCache.set(m, (v = eyeBoxes(m)));
@@ -17,9 +17,17 @@ const eyesOf = (m: PixelMap) => {
 };
 const legsOf = (m: PixelMap) => {
   let v = legCache.get(m);
-  if (!v) legCache.set(m, (v = legRuns(m)));
+  if (!v) legCache.set(m, (v = { runs: legRuns(m), rows: legRowCount(m) }));
   return v;
 };
+
+interface DrawOpts {
+  tint?: string | null;
+  /** hide legs with this parity (walk cycle) */
+  skipLegs?: 0 | 1 | null;
+  /** mirror horizontally inside a canvas of `flipCols` columns */
+  flipCols?: number | null;
+}
 
 export class Renderer {
   readonly ctx: CanvasRenderingContext2D;
@@ -48,7 +56,6 @@ export class Renderer {
     c.imageSmoothingEnabled = false;
     c.fillStyle = COLORS.bg;
     c.fillRect(0, 0, this.w, this.h);
-    // dotted grid, terminal-cell flavoured
     c.fillStyle = COLORS.grid;
     const step = 24;
     for (let y = step; y < this.h; y += step) for (let x = step; x < this.w; x += step) c.fillRect(x, y, 1, 1);
@@ -56,41 +63,48 @@ export class Renderer {
 
   // ── sprites ────────────────────────────────────────────────────
 
-  drawMap(map: PixelMap, ox: number, oy: number, px: number, opts: { tint?: string | null; skipLegs?: 0 | 1 | null; flip?: boolean } = {}): void {
+  /**
+   * Draw a pixel map with its (0,0) cell at canvas (ox, oy). Cells may be negative /
+   * beyond the map when drawing overlays; `flipCols` mirrors columns within that width.
+   */
+  drawMap(map: PixelMap, ox: number, oy: number, px: number, opts: DrawOpts = {}, cellX = 0, cellY = 0): void {
     const c = this.ctx;
     const { cols, rows } = mapSize(map);
     const legs = opts.skipLegs == null ? null : legsOf(map);
     for (let y = 0; y < rows; y++) {
       const row = map[y] ?? '';
-      const isLegRow = y === rows - 1;
+      const isLegRow = legs !== null && y >= rows - legs.rows;
       for (let x = 0; x < cols; x++) {
         const ch = row[x] ?? '.';
         if (ch === '.') continue;
         if (isLegRow && legs && opts.skipLegs != null) {
-          const idx = legs.findIndex(([a, b]) => x >= a && x <= b);
+          const idx = legs.runs.findIndex(([a, b]) => x >= a && x <= b);
           if (idx >= 0 && idx % 2 === opts.skipLegs) continue;
         }
         c.fillStyle = opts.tint ?? PALETTE[ch] ?? COLORS.cream;
-        const dx = opts.flip ? cols - 1 - x : x;
-        c.fillRect(ox + dx * px, oy + y * px, px, px);
+        const gx = cellX + x;
+        const dx = opts.flipCols != null ? opts.flipCols - 1 - gx : gx;
+        c.fillRect(ox + dx * px, oy + (cellY + y) * px, px, px);
       }
     }
   }
 
   drawPet(pet: Pet, cursor: Vec | null, now: number): void {
     const c = this.ctx;
-    const def = pet.def;
-    const map = def.sprite;
-    const px = def.pixel;
+    const px = pet.def.pixel;
+    const pose = pet.pose();
+    const map = POSES[pose];
     const { cols, rows } = mapSize(map);
     const w = cols * px;
     const h = rows * px;
+    const flip = pet.facing < 0;
+    const flipCols = flip ? cols : null;
 
     // shadow
     c.fillStyle = 'rgba(0,0,0,0.35)';
     c.beginPath();
     const shadowScale = 1 - Math.min(0.5, -pet.jump / 120);
-    c.ellipse(pet.x, pet.y + 2, (w / 2) * 0.85 * shadowScale, 4 * shadowScale, 0, 0, Math.PI * 2);
+    c.ellipse(pet.x, pet.y + 2, (w / 2) * 0.72 * shadowScale, 4 * shadowScale, 0, 0, Math.PI * 2);
     c.fill();
 
     // idle bob / walk bob (whole pixels only, keeps it crisp)
@@ -111,40 +125,36 @@ export class Renderer {
     const oy = -h + bob;
 
     const skipLegs: 0 | 1 | null = pet.moving ? ((Math.floor(pet.walkPhase) % 2) as 0 | 1) : null;
-    this.drawMap(map, ox, oy, px, { tint, skipLegs });
+    this.drawMap(map, ox, oy, px, { tint, skipLegs, flipCols });
 
-    // eyes
+    // eyes — 1 px each; they glance toward the cursor by sliding half a pixel
     const style = pet.eyeStyle(now);
     const look = pet.look(cursor);
+    c.fillStyle = COLORS.eye;
     for (const b of eyesOf(map)) {
-      const ex = ox + b.x * px;
+      const bx = flip ? cols - b.x - b.w : b.x;
+      const ex = ox + bx * px;
       const ey = oy + b.y * px;
+      const ew = b.w * px;
+      const eh = b.h * px;
       if (tint) {
-        c.fillStyle = COLORS.eye;
-        c.fillRect(ex, ey, b.w * px, b.h * px);
+        c.fillRect(ex, ey, ew, eh);
         continue;
       }
       switch (style) {
-        case 'open': {
-          c.fillStyle = COLORS.eye;
-          c.fillRect(ex, ey, b.w * px, b.h * px);
-          const sx = look.x > 0 ? b.w - 1 : 0;
-          const sy = look.y > 0 ? b.h - 1 : 0;
-          c.fillStyle = COLORS.eyeShine;
-          c.fillRect(ex + sx * px, ey + sy * px, px, px);
+        case 'open':
+          c.fillRect(ex + look.x * px * 0.5, ey + look.y * px * 0.35, ew, eh);
           break;
-        }
         case 'closed':
-          c.fillStyle = COLORS.eye;
-          c.fillRect(ex, ey + Math.floor(b.h / 2) * px, b.w * px, px);
+          c.fillRect(ex - px * 0.25, ey + eh * 0.4, ew + px * 0.5, Math.max(1, eh * 0.28));
           break;
         case 'happy':
-          c.fillStyle = COLORS.eye;
-          c.fillRect(ex, ey, b.w * px, Math.ceil(b.h / 2) * px);
+          c.fillRect(ex - px * 0.25, ey, ew + px * 0.5, Math.max(1, eh * 0.3));
+          c.fillRect(ex - px * 0.25, ey, px * 0.3, eh * 0.6);
+          c.fillRect(ex + ew - px * 0.05, ey, px * 0.3, eh * 0.6);
           break;
         case 'sad':
-          c.fillStyle = COLORS.eye;
-          c.fillRect(ex, ey + Math.floor(b.h / 2) * px, b.w * px, Math.ceil(b.h / 2) * px);
+          c.fillRect(ex, ey + eh * 0.45, ew, eh * 0.55);
           break;
       }
     }
@@ -159,14 +169,22 @@ export class Renderer {
         const my = oy + (l.y + l.h + 1) * px;
         const open = Math.floor(pet.eatTimer * 8) % 2 === 0;
         c.fillStyle = COLORS.eye;
-        c.fillRect(Math.round(mx - px), my, px * 2, open ? px * 1.5 : px * 0.5);
+        c.fillRect(Math.round(mx - px * 1.5), my, px * 3, open ? px * 1.2 : px * 0.5);
       }
+    }
+
+    // outfit overlays (idle-map coordinates, shifted per pose)
+    const outfit = OUTFITS[pet.outfit];
+    const off = POSE_HEAD_OFFSET[pose];
+    for (const layer of outfit.layers) {
+      if (layer.poses && !layer.poses.includes(pose)) continue;
+      this.drawMap(layer.map, ox, oy, px, { tint, flipCols }, layer.x + off.x, layer.y + off.y);
     }
 
     // caffeine sparkle
     if (pet.caffeinated && Math.floor(now / 120) % 2 === 0) {
       c.fillStyle = COLORS.gold;
-      c.fillRect(ox + w - px, oy - px * 2, px, px);
+      c.fillRect(ox + w - px, oy - (outfit.above + 2) * px, px, px);
     }
 
     c.restore();
@@ -189,7 +207,6 @@ export class Renderer {
     if (!cursor) return;
     const c = this.ctx;
     if (tool === 'cursor') {
-      // a blinking terminal block cursor
       if (Math.floor(now / 500) % 2 === 0) {
         c.fillStyle = COLORS.body;
         c.globalAlpha = 0.85;
@@ -208,7 +225,7 @@ export class Renderer {
   drawBubble(b: Bubble | null, pet: Pet, now: number): void {
     if (!b || now > b.until) return;
     const c = this.ctx;
-    const head = pet.head;
+    const top = pet.top;
     const fade = Math.min(1, (b.until - now) / 250);
     c.globalAlpha = fade;
     c.font = '12px ui-monospace, "JetBrains Mono", Menlo, monospace';
@@ -218,13 +235,12 @@ export class Renderer {
     const tw = Math.ceil(c.measureText(b.text).width);
     const bw = tw + padX * 2;
     const bh = 22;
-    let bx = Math.round(head.x - bw / 2);
+    let bx = Math.round(top.x - bw / 2);
     bx = Math.max(6, Math.min(this.w - bw - 6, bx));
-    const by = Math.round(head.y - bh - 12);
+    const by = Math.max(4, Math.round(top.y - bh - 10));
     c.fillStyle = COLORS.cream;
     c.fillRect(bx, by, bw, bh);
-    // tail
-    const tx = Math.round(Math.max(bx + 6, Math.min(bx + bw - 10, head.x - 2)));
+    const tx = Math.round(Math.max(bx + 6, Math.min(bx + bw - 10, top.x - 2)));
     c.fillRect(tx, by + bh, 4, 3);
     c.fillRect(tx + 1, by + bh + 3, 2, 2);
     c.fillStyle = COLORS.bg;

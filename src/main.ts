@@ -8,11 +8,12 @@ import { clearSave, loadSave, writeSave } from './storage';
 import { FOOD_KINDS, type FoodKind, type Tool, type Vec } from './types';
 import { FOODS } from './logic';
 import { STAGES } from './evolution';
-import { STAGE_SPRITES, FOOD_SPRITES, validateMap } from './sprites';
+import { FOOD_SPRITES, OUTFITS, POSES, validateMap } from './sprites';
 
 // ── sanity check the pixel art in dev ────────────────────────────
 if (import.meta.env.DEV) {
-  for (const m of [...STAGE_SPRITES, ...Object.values(FOOD_SPRITES)]) {
+  const layers = Object.values(OUTFITS).flatMap((o) => o.layers.map((l) => l.map));
+  for (const m of [...Object.values(POSES), ...Object.values(FOOD_SPRITES), ...layers]) {
     const err = validateMap(m);
     if (err) console.error('bad sprite:', err, m);
   }
@@ -34,6 +35,7 @@ let placed = false;
 let lastSave = now();
 let lastZ = 0;
 let lastCrumb = 0;
+let lastConfetti = 0;
 const startedAt = now();
 
 // ── helpers ──────────────────────────────────────────────────────
@@ -50,8 +52,8 @@ function spawnFood(kind: FoodKind, at?: Vec): boolean {
     x: 40 + Math.random() * Math.max(1, b.w - 80),
     y: 60 + Math.random() * Math.max(1, b.h - 80),
   };
-  p.x = Math.max(20, Math.min(b.w - 20, p.x));
-  p.y = Math.max(50, Math.min(b.h - 8, p.y));
+  p.x = Math.max(16, Math.min(b.w - 16, p.x));
+  p.y = Math.max(36, Math.min(b.h - 8, p.y));
   const f: Food = { id: foodId++, kind, x: p.x, y: p.y, born: now() };
   world.foods.push(f);
   ui.log(`Drop(${FOODS[kind].label}) at (${Math.round(p.x)}, ${Math.round(p.y)})`, 'act');
@@ -120,6 +122,9 @@ function drainEvents(): void {
         doSave();
         break;
       }
+      case 'unlocked':
+        ui.log(`Unlocked outfit: ${OUTFITS[e.outfit].label} — /wear <name> to change`, 'ok');
+        break;
       case 'slept':
         ui.log(`${pet.name} fell asleep`, 'act');
         ui.log('energy recovers while sleeping · poke to wake', 'sub');
@@ -161,7 +166,7 @@ ui.canvas.addEventListener('pointerdown', (ev) => {
     pet.poke(now());
     ui.log(`Poke(${pet.name})`, 'act');
   } else {
-    pet.setTarget(p, now());
+    pet.setTarget(p, now(), world.bounds);
   }
 });
 ui.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -242,6 +247,10 @@ function frame(): void {
   if (pet.eatTimer > 0 && t - lastCrumb > 140) {
     lastCrumb = t;
     particles.spawn('crumb', pet.center.x + (Math.random() - 0.5) * 10, pet.center.y + 6, 2);
+  }
+  if (pet.outfit === 'party' && !pet.sleeping && t - lastConfetti > 420) {
+    lastConfetti = t;
+    particles.spawn('confetti', pet.top.x + (Math.random() - 0.5) * pet.size.w * 1.6, pet.top.y - 30 - Math.random() * 20, 1);
   }
   if (pet.mood === 'excited' && Math.random() < 0.15) particles.spawn('star', pet.head.x + (Math.random() - 0.5) * pet.size.w, pet.head.y, 1);
 

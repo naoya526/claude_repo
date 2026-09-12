@@ -23,6 +23,8 @@ export interface SaveData {
   name: string;
   stats: Stats;
   stage: number;
+  /** optional for saves written before outfits existed */
+  outfit?: string;
   fed: Record<FoodKind, number>;
   pokes: number;
   savedAt: number;

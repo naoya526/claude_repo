@@ -1,6 +1,6 @@
 import { COLORS } from './sprites';
 
-export type ParticleKind = 'heart' | 'spark' | 'z' | 'crumb' | 'star';
+export type ParticleKind = 'heart' | 'spark' | 'z' | 'crumb' | 'star' | 'confetti';
 
 interface Particle {
   kind: ParticleKind;
@@ -63,6 +63,15 @@ export class Particles {
           p.color = '#9aa4b2';
           p.size = rnd(9, 13);
           break;
+        case 'confetti': {
+          const palette = ['#E06C75', '#7AA2F7', COLORS.body, COLORS.gold, COLORS.cream];
+          p.vx = rnd(-25, 25);
+          p.vy = rnd(10, 30);
+          p.max = rnd(1.8, 3);
+          p.color = palette[Math.floor(Math.random() * palette.length)] ?? COLORS.cream;
+          p.size = rnd(2, 3);
+          break;
+        }
         case 'crumb':
           p.vx = rnd(-40, 40);
           p.vy = rnd(-60, -20);
@@ -80,6 +89,7 @@ export class Particles {
       p.life += dt;
       if (p.kind === 'crumb' || p.kind === 'spark') p.vy += 260 * dt;
       if (p.kind === 'heart' || p.kind === 'z') p.vx += Math.sin(p.life * 6 + p.spin) * 20 * dt;
+      if (p.kind === 'confetti') p.vx = Math.sin(p.life * 5 + p.spin) * 28;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.spin += dt * 4;
@@ -125,6 +135,11 @@ export class Particles {
         case 'crumb':
           ctx.fillRect(Math.round(p.x), Math.round(p.y), s, s);
           break;
+        case 'confetti': {
+          const wide = Math.floor(p.spin * 2) % 2 === 0;
+          ctx.fillRect(Math.round(p.x), Math.round(p.y), wide ? s * 2 : s, wide ? s : s * 2);
+          break;
+        }
       }
     }
     ctx.globalAlpha = 1;
